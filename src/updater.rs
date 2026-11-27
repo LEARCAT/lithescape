@@ -95,7 +95,7 @@ fn json_deb_url(text: &str) -> Option<String> {
     None
 }
 
-/// 探测最新 Release：GitHub 优先（信息更全，带 deb 地址），Gitee 兜底。
+/// 探测最新 Release：两端都查，版本取较高者；下载优先 Gitee 附件，回退 GitHub。
 pub fn check(current: &str) -> Option<Release> {
     let github = http_get(&github_latest(), 25).and_then(|t| {
         let root: Value = serde_json::from_str(&t).ok()?;
@@ -116,7 +116,7 @@ pub fn check(current: &str) -> Option<Release> {
         let tag = root.get("tag_name")?.as_str()?;
         Some(Release {
             version: tag.trim_start_matches('v').to_string(),
-            deb_url: None,
+            deb_url: json_deb_url(&t),
             notes: root
                 .get("body")
                 .and_then(|v| v.as_str())
@@ -126,7 +126,21 @@ pub fn check(current: &str) -> Option<Release> {
     });
 
     let mut release = match (github, gitee) {
-        (Some(gh), _) => gh,
+        (Some(gh), Some(gt)) => {
+            let gh_v = parse_version(&gh.version).unwrap_or([0, 0, 0]);
+            let gt_v = parse_version(&gt.version).unwrap_or([0, 0, 0]);
+            if gt_v > gh_v {
+                gt
+            } else if gh_v > gt_v {
+                gh
+            } else if gt.deb_url.is_some() {
+                // 版本一致时优先 Gitee 附件，国内下载更稳。
+                gt
+            } else {
+                gh
+            }
+        }
+        (Some(gh), None) => gh,
         (None, Some(gt)) => gt,
         (None, None) => return None,
     };
@@ -167,6 +181,7 @@ fn format_update_hint(release: &Release) -> String {
         .map(|l| {
             l.trim_start_matches(|c| c == '-' || c == '*')
                 .trim()
+                .trim_end_matches(|c: char| matches!(c, '。' | '；' | '！' | '.' | ';' | '!'))
         })
         .unwrap_or("")
         .chars()
@@ -205,21 +220,41 @@ pub fn download(release: &Release) -> Result<PathBuf, String> {
         .join(name);
     let tmp = path.with_extension("deb.part");
 
-    let status = Command::new("curl")
-        .args([
-            "-fL",
-            "--connect-timeout",
-            "10",
-            "--max-time",
-            "300",
-            "-o",
-            &tmp.to_string_lossy(),
-            url,
-        ])
-        .status()
-        .map_err(|e| format!("调用 curl 下载失败: {e}"))?;
-    if !status.success() {
+    // 主地址失败时回退到 GitHub 标准地址；两端都失败才报错。
+    let fallback = format!(
+        "https://github.com/{GITHUB_REPO}/releases/download/v{}/lithescape_{}_amd64.deb",
+        release.version, release.version
+    );
+    let mut ok = false;
+    let candidates: Vec<&str> = if fallback == *url {
+        vec![url.as_str()]
+    } else {
+        vec![url.as_str(), fallback.as_str()]
+    };
+    for candidate in candidates {
+        if candidate.is_empty() {
+            continue;
+        }
+        let status = Command::new("curl")
+            .args([
+                "-fL",
+                "--connect-timeout",
+                "10",
+                "--max-time",
+                "300",
+                "-o",
+                &tmp.to_string_lossy(),
+                candidate,
+            ])
+            .status()
+            .map_err(|e| format!("调用 curl 下载失败: {e}"))?;
+        if status.success() {
+            ok = true;
+            break;
+        }
         let _ = fs::remove_file(&tmp);
+    }
+    if !ok {
         return Err("下载失败（网络不可达或下载地址失效）".into());
     }
     let meta = fs::metadata(&tmp).map_err(|e| e.to_string())?;
@@ -333,16 +368,26 @@ mod tests {
     }
 
     #[test]
+    fn gitee_deb_url_from_assets() {
+        let text = r#"{"assets":[{"name":"lithescape_0.1.4_amd64.deb","browser_download_url":"https://gitee.com/learcat/lithescape/releases/download/v0.1.4/lithescape_0.1.4_amd64.deb"},{"name":"v0.1.4.zip","browser_download_url":"https://gitee.com/x.zip"}]}"#;
+        assert_eq!(
+            json_deb_url(text).as_deref(),
+            Some("https://gitee.com/learcat/lithescape/releases/download/v0.1.4/lithescape_0.1.4_amd64.deb")
+        );
+    }
+
+    #[test]
     fn update_hint_mentions_menu() {
         let r = Release {
             version: "0.1.3".into(),
             deb_url: None,
-            notes: "轻格壁纸 LitheScape 0.1.3\n- 启动时检查更新".into(),
+            notes: "轻格壁纸 LitheScape 0.1.3\n- 启动时检查更新。".into(),
         };
         let hint = format_update_hint(&r);
         assert!(hint.contains("0.1.3"));
         assert!(hint.contains("「软件更新」"));
         assert!(hint.contains("启动时检查更新"));
+        assert!(!hint.contains("。。"));
     }
 }
 

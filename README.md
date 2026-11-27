@@ -2,7 +2,7 @@
 
 一个为 **deepin V25** 编写的必应每日壁纸托盘程序。Rust 单二进制 + zbus 直连 SNI，不依赖 GTK / AppIndicator，托盘常驻，自动更换壁纸。
 
-- 当前版本：**0.1.3**
+- 当前版本：**0.1.4**
 - 适用环境：deepin V25、amd64（二进制依赖 GLIBC_2.34 及以上）
 - 许可证：[GPL-3.0-or-later](LICENSE)
 
@@ -25,12 +25,12 @@
 
 ## 安装
 
-图形方式：双击 `lithescape_0.1.3_amd64.deb`，用系统安装器安装。
+图形方式：双击 `lithescape_0.1.4_amd64.deb`，用系统安装器安装。
 
 命令行方式：
 
 ```bash
-sudo dpkg -i lithescape_0.1.3_amd64.deb
+sudo dpkg -i lithescape_0.1.4_amd64.deb
 ```
 
 装前先退出旧实例（`pkill -f lithescape`）。启动器图标若未刷新，注销重登一次。
@@ -43,8 +43,8 @@ sudo dpkg -i lithescape_0.1.3_amd64.deb
 
 点托盘菜单「软件更新」，程序会：
 
-1. 同时探测 Gitee 与 GitHub 的最新 Release（Gitee 读版本号，GitHub 读版本号与 deb 附件地址）
-2. 发现新版后下载 deb 到 `~/.cache/lithescape/`
+1. 同时探测 Gitee 与 GitHub 的最新 Release，取较高版本号；两端都能读到 deb 附件地址
+2. 下载 deb 到 `~/.cache/lithescape/`，优先 Gitee 附件，失败回退 GitHub
 3. 依次尝试 `sudo -n`（免密静默）→ `pkexec`（弹一次系统密码框）→ `xdg-open`（交给系统安装器）。密码不经过本程序。
 
 网络不可达或已是最新版时会给出对应提示，不会卡住托盘。
