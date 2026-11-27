@@ -21,7 +21,8 @@ const ID_STORY: i32 = 4;
 const ID_AUTO: i32 = 7;
 const ID_UPDATE: i32 = 8;
 const ID_QUIT: i32 = 9;
-const ID_PREVIEW: i32 = 10; // 壁纸预览子菜单
+const ID_PREVIEW: i32 = 10; // 壁纸预览
+const ID_FAVORITES: i32 = 11; // 壁纸收藏
 const SEP_1: i32 = 101;
 const SEP_2: i32 = 102;
 const SEP_3: i32 = 103;
@@ -162,6 +163,7 @@ fn menu_layout() -> (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) {
         menu_item(ID_NEXT, "下一张", idx > 0, None),
         separator(SEP_1),
         menu_item(ID_PREVIEW, "壁纸预览", true, None),
+        menu_item(ID_FAVORITES, "壁纸收藏", true, None),
         separator(SEP_4),
         menu_item(ID_STORY, "图片故事", true, None),
         separator(SEP_2),
@@ -350,27 +352,30 @@ pub fn dispatch_click(shared: &Shared, id: i32) {
                 }
             });
         }
-        ID_PREVIEW => {
+        ID_PREVIEW | ID_FAVORITES => {
+            let favorites = id == ID_FAVORITES;
+            let label = if favorites { "壁纸收藏" } else { "壁纸预览" };
             let port = shared.gallery_port.lock().map(|p| *p).unwrap_or(0);
             if port == 0 {
-                bing::notify("壁纸预览", "画廊服务未启动，请重启程序");
+                bing::notify(label, "画廊服务未启动，请重启程序");
                 return;
             }
-            // 后台预下载 7 张大图，打开后页面会逐个加载
             let items = shared
                 .previews
                 .lock()
                 .map(|p| p.clone())
                 .unwrap_or_default();
             if items.is_empty() {
-                bing::notify("壁纸预览", "壁纸列表加载中，请稍后再点一次");
+                bing::notify(label, "壁纸列表加载中，请稍后再点一次");
             }
+            // 后台预热大图：收藏页要显示所有壁纸（含已收藏），因此同样预热全部，
+            // 打开后页面按标签即时切换，无需等待网络。
             std::thread::spawn(move || {
                 for item in &items {
                     let _ = crate::gallery::ensure_large(item);
                 }
             });
-            crate::gallery::open(port);
+            crate::gallery::open(port, favorites);
         }
         ID_STORY => {
             if let Some(meta) = state.meta.get(&idx.to_string()) {
@@ -502,6 +507,25 @@ pub fn spawn_preview_loader(shared: Shared) {
             }
         }
         std::thread::sleep(std::time::Duration::from_secs(3600));
+    });
+}
+
+/// 启动时执行一次：立即把壁纸切换为必应每日壁纸（index 0）。
+/// 放在独立线程，不阻塞托盘注册；用 busy 锁避免与用户点击/定时器冲突。
+/// 成功不弹通知（静默完成），失败才提示用户。
+pub fn spawn_startup_apply(shared: Shared) {
+    std::thread::spawn(move || {
+        // 让预览加载器先把元数据/历史归档建好，启动换壁纸随后进行
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        if !shared.begin_busy() {
+            return;
+        }
+        let _guard = shared.busy_guard();
+        let cfg = shared.cfg.lock().map(|c| c.clone()).unwrap_or_default();
+        match bing::apply(0, false, &cfg) {
+            Ok(_) => eprintln!("[info] 启动已切换为每日壁纸"),
+            Err(e) => bing::notify("轻格壁纸", &format!("启动时设置壁纸失败：{e}")),
+        }
     });
 }
 

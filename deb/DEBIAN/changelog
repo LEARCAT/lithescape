@@ -1,3 +1,11 @@
+lithescape (0.1.7) unstable; urgency=medium
+
+  * 启动后自动切换为必应每日壁纸（后台执行，仅失败时提示）。
+  * 托盘菜单新增「壁纸收藏」；画廊支持「全部壁纸 / 我的收藏」标签与一键收藏、取消收藏。
+  * 收藏独立存于 favorites.json，按日期去重、不受 365 天历史裁剪影响。
+
+ -- LitheScape  Fri, 27 Nov 2026 18:10:00 +0800
+
 lithescape (0.1.6) unstable; urgency=medium
 
   * 壁纸默认优先 4K/UHD（3840x2160），下载失败自动回退低分辨率；旧归档链接也会升级。

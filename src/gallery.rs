@@ -54,9 +54,10 @@ pub fn start(shared: Shared) -> std::io::Result<u16> {
     Ok(port)
 }
 
-/// 在浏览器打开画廊
-pub fn open(port: u16) {
-    bing::open_url(&format!("http://127.0.0.1:{}/", port));
+/// 在浏览器打开画廊。favorites=true 时默认进入「我的收藏」标签。
+pub fn open(port: u16, favorites: bool) {
+    let path = if favorites { "/?view=fav" } else { "/" };
+    bing::open_url(&format!("http://127.0.0.1:{}{path}", port));
 }
 
 /// 实时从本地归档构造画廊列表（按日期倒序，index 0 最新）。
@@ -93,9 +94,11 @@ fn handle(stream: &mut TcpStream, shared: &Shared) {
     let raw_path = req.split_whitespace().nth(1).unwrap_or("/");
     // 浏览器会给图片 URL 加 ?t=时间戳 绕过缓存，必须先剥掉查询串再解析索引
     let path = raw_path.split('?').next().unwrap_or(raw_path);
+    let query = raw_path.split_once('?').map(|(_, q)| q).unwrap_or("");
+    let fav_view = query.contains("view=fav");
 
     if path == "/" || path.starts_with("/index.html") {
-        let html = page_html(shared);
+        let html = page_html(shared, fav_view);
         respond(stream, 200, "text/html; charset=utf-8", html.as_bytes());
     } else if let Some(rest) = path.strip_prefix("/img/") {
         // /img/<index>.jpg
@@ -121,6 +124,17 @@ fn handle(stream: &mut TcpStream, shared: &Shared) {
             bing::notify("设置失败", &msg);
         }
         let json = serde_json::json!({ "ok": ok, "msg": msg }).to_string();
+        respond(
+            stream,
+            200,
+            "application/json; charset=utf-8",
+            json.as_bytes(),
+        );
+    } else if let Some(rest) = path.strip_prefix("/fav/") {
+        // /fav/<index> —— 收藏 / 取消收藏，返回切换后的状态
+        let idx: i32 = rest.parse().unwrap_or(0);
+        let (ok, fav) = toggle_favorite(shared, idx);
+        let json = serde_json::json!({ "ok": ok, "fav": fav }).to_string();
         respond(
             stream,
             200,
@@ -155,6 +169,21 @@ fn set_wallpaper(shared: &Shared, idx: i32) -> (bool, String) {
     }
 }
 
+/// 切换某张壁纸的收藏状态，返回 (是否成功, 切换后是否已收藏)
+fn toggle_favorite(shared: &Shared, idx: i32) -> (bool, bool) {
+    let previews = current_items(shared);
+    let item = match previews.iter().find(|p| p.index == idx) {
+        Some(i) => i,
+        None => return (false, false),
+    };
+    let hist = crate::config::HistoryItem {
+        meta: item.meta.clone(),
+        image_url: item.image_url.clone(),
+    };
+    let fav = crate::config::toggle_favorite(hist);
+    (true, fav)
+}
+
 fn respond(stream: &mut TcpStream, status: u16, content_type: &str, body: &[u8]) {
     let reason = if status == 200 { "OK" } else { "Not Found" };
     let header = format!(
@@ -174,8 +203,15 @@ fn escape_json(s: &str) -> String {
 }
 
 /// 生成画廊 HTML：数据内嵌为 JS 对象，图片走本地服务 /img/
-fn page_html(shared: &Shared) -> String {
+/// fav_view=true 时默认进入「我的收藏」标签。
+fn page_html(shared: &Shared, fav_view: bool) -> String {
     let previews = current_items(shared);
+    // 已收藏日期集合：按 enddate 判定，历史归档更新也不会丢收藏状态
+    let favorites = crate::config::load_favorites();
+    let fav_dates: std::collections::HashSet<&str> = favorites
+        .iter()
+        .map(|h| h.meta.enddate.as_str())
+        .collect();
     let mut items = Vec::new();
     for item in &previews {
         let story = if item.meta.copyrightlink.is_empty() {
@@ -183,16 +219,19 @@ fn page_html(shared: &Shared) -> String {
         } else {
             item.meta.copyrightlink.clone()
         };
+        let fav = fav_dates.contains(item.date.as_str());
         items.push(format!(
-            "{{\"i\":{},\"t\":{},\"d\":{},\"c\":{},\"s\":{}}}",
+            "{{\"i\":{},\"t\":{},\"d\":{},\"c\":{},\"s\":{},\"f\":{}}}",
             item.index,
             escape_json(&item.title),
             escape_json(&item.date),
             escape_json(&item.meta.copyright),
-            escape_json(&story)
+            escape_json(&story),
+            if fav { "true" } else { "false" }
         ));
     }
     let data = format!("[{}]", items.join(","));
+    let start_tab = if fav_view { "fav" } else { "all" };
 
     format!(
         r#"<!DOCTYPE html>
@@ -226,6 +265,12 @@ body{{font-family:"Noto Sans CJK SC","Microsoft YaHei",sans-serif;background:#11
 .thumb:hover{{opacity:.85}}
 .thumb.active{{opacity:1;border-color:#107c9e}}
 #hint{{position:absolute;top:16px;left:50%;transform:translateX(-50%);font-size:12px;color:#9aa0a8;background:rgba(24,26,31,.8);padding:6px 14px;border-radius:20px}}
+#tabs{{display:flex;gap:6px;margin-bottom:10px}}
+.tab{{padding:6px 15px;border:1px solid transparent;border-radius:5px;background:transparent;color:#9aa0a8;font-size:13px;cursor:pointer}}
+.tab:hover{{color:#e8eaed}}
+.tab.on{{background:#107c9e;border-color:#107c9e;color:#fff}}
+.btn.fav-on{{color:#ffd166;border-color:#8a6d2f;background:#3a321f}}
+.btn.fav-on:hover{{background:#4a4028}}
 @media(max-width:760px){{#date{{display:none}}.btn{{padding:6px 10px;font-size:12px}}.thumb{{width:84px;height:48px}}}}
 </style>
 </head>
@@ -237,9 +282,14 @@ body{{font-family:"Noto Sans CJK SC","Microsoft YaHei",sans-serif;background:#11
   <button class="nav" id="next" title="下一张">›</button>
 </div>
 <div id="bar">
+  <div id="tabs">
+    <button class="tab" id="tab-all">全部壁纸</button>
+    <button class="tab" id="tab-fav">我的收藏</button>
+  </div>
   <div id="info">
     <div id="title">加载中…</div>
     <div id="date"></div>
+    <button class="btn" id="favbtn" title="收藏 / 取消收藏">☆ 收藏</button>
     <button class="btn" id="story" title="查看图片故事">图片故事</button>
     <button class="btn main" id="setbtn">设为壁纸</button>
   </div>
@@ -248,8 +298,14 @@ body{{font-family:"Noto Sans CJK SC","Microsoft YaHei",sans-serif;background:#11
 <script>
 const DATA = {data};
 let cur = 0;
+let view = '{start_tab}';
 const $ = id => document.getElementById(id);
 const photo = $('photo');
+
+// 当前标签下可见的壁纸：全部 或 只看已收藏
+function visible() {{
+  return view === 'fav' ? DATA.filter(x => x.f) : DATA;
+}}
 
 function fmtDate(d) {{
   if (!d || d.length < 8) return '';
@@ -257,8 +313,9 @@ function fmtDate(d) {{
 }}
 
 function loadMain() {{
-  if (!DATA.length) return;
-  const it = DATA[cur];
+  const list = visible();
+  if (!list.length) return;
+  const it = list[cur];
   photo.classList.add('loading');
   const img = new Image();
   img.onload = () => {{ photo.src = img.src; photo.classList.remove('loading'); }};
@@ -267,27 +324,53 @@ function loadMain() {{
 }}
 
 function render() {{
+  const list = visible();
+  $('tab-all').classList.toggle('on', view === 'all');
+  $('tab-fav').classList.toggle('on', view === 'fav');
   if (!DATA.length) {{
     $('title').textContent = '壁纸列表加载中，几秒后自动刷新…';
     setTimeout(() => location.reload(), 3000);
     return;
   }}
-  const it = DATA[cur];
-  $('title').textContent = (cur === 0 ? '今天 · ' : cur + ' 天前 · ') + it.t;
+  if (!list.length) {{
+    $('title').textContent = '还没有收藏壁纸';
+    $('date').textContent = '在「全部壁纸」中点 ☆ 收藏';
+    photo.removeAttribute('src');
+    $('prev').disabled = $('next').disabled = true;
+    $('favbtn').disabled = $('story').disabled = $('setbtn').disabled = true;
+    document.querySelectorAll('.thumb').forEach(el => el.remove());
+    return;
+  }}
+  if (cur >= list.length) cur = list.length - 1;
+  const it = list[cur];
+  $('title').textContent = (it.d ? '' : '') + (view === 'fav' ? '收藏 · ' : (cur === 0 ? '今天 · ' : cur + ' 天前 · ')) + it.t;
   $('date').textContent = fmtDate(it.d);
-  $('prev').disabled = cur >= DATA.length - 1;
-  $('next').disabled = cur <= 0;
+  $('favbtn').disabled = $('story').disabled = $('setbtn').disabled = false;
+  $('favbtn').textContent = it.f ? '★ 已收藏' : '☆ 收藏';
+  $('favbtn').classList.toggle('fav-on', !!it.f);
   $('story').disabled = !it.s;
+  $('prev').disabled = cur >= list.length - 1;
+  $('next').disabled = cur <= 0;
   document.querySelectorAll('.thumb').forEach((el, k) => el.classList.toggle('active', k === cur));
   loadMain();
 }}
 
 function go(step) {{
+  const list = visible();
   const next = cur + step;
-  if (next < 0 || next >= DATA.length) return;
+  if (next < 0 || next >= list.length) return;
   cur = next;
   render();
 }}
+
+function switchView(v) {{
+  view = v;
+  cur = 0;
+  renderThumbs();
+  render();
+}}
+$('tab-all').onclick = () => switchView('all');
+$('tab-fav').onclick = () => switchView('fav');
 
 $('prev').onclick = () => go(1);
 $('next').onclick = () => go(-1);
@@ -295,12 +378,14 @@ document.addEventListener('keydown', e => {{
   if (e.key === 'ArrowRight') go(-1);
   if (e.key === 'ArrowLeft') go(1);
 }});
-$('story').onclick = () => {{ if (DATA[cur].s) window.open(DATA[cur].s, '_blank'); }};
+$('story').onclick = () => {{ const it = visible()[cur]; if (it && it.s) window.open(it.s, '_blank'); }};
 $('setbtn').onclick = async () => {{
+  const it = visible()[cur];
+  if (!it) return;
   const b = $('setbtn');
   b.disabled = true; b.textContent = '设置中…';
   try {{
-    const r = await fetch('/set/' + DATA[cur].i);
+    const r = await fetch('/set/' + it.i);
     const j = await r.json();
     // 结果由程序发桌面通知（会自动消失），这里只给按钮短暂反馈，不弹窗
     b.textContent = j.ok ? '✓ 已设为壁纸' : '✗ 设置失败';
@@ -310,21 +395,81 @@ $('setbtn').onclick = async () => {{
   setTimeout(() => {{ b.disabled = false; b.textContent = '设为壁纸'; }}, 1500);
 }};
 
-const box = $('thumbs');
-DATA.forEach((it, k) => {{
-  const im = document.createElement('img');
-  im.className = 'thumb';
-  im.alt = fmtDate(it.d);
-  im.title = (k === 0 ? '今天' : k + ' 天前') + ' · ' + it.t;
-  im.src = '/img/' + it.i + '.jpg';
-  im.onerror = () => {{ im.style.opacity = '.2'; }};
-  im.onclick = () => {{ cur = k; render(); }};
-  box.appendChild(im);
-}});
+$('favbtn').onclick = async () => {{
+  const it = visible()[cur];
+  if (!it) return;
+  const b = $('favbtn');
+  b.disabled = true;
+  try {{
+    const r = await fetch('/fav/' + it.i);
+    const j = await r.json();
+    if (j.ok) {{
+      it.f = j.fav;
+      if (view === 'fav' && !j.fav) {{
+        // 在收藏页取消收藏：从当前列表移除，避免索引错位
+        renderThumbs();
+        if (cur >= visible().length) cur = Math.max(0, visible().length - 1);
+        render();
+        return;
+      }}
+      render();
+    }}
+  }} catch (e) {{}}
+  b.disabled = false;
+}};
+
+function renderThumbs() {{
+  const box = $('thumbs');
+  box.innerHTML = '';
+  visible().forEach((it, k) => {{
+    const im = document.createElement('img');
+    im.className = 'thumb' + (k === cur ? ' active' : '');
+    im.alt = fmtDate(it.d);
+    im.title = (it.f ? '★ ' : '') + (view === 'all' && k === 0 ? '今天' : k + ' 天前') + ' · ' + it.t;
+    im.src = '/img/' + it.i + '.jpg' + (it.f ? '?f=1' : '');
+    im.onerror = () => {{ im.style.opacity = '.2'; }};
+    im.onclick = () => {{ cur = k; render(); }};
+    box.appendChild(im);
+  }});
+}}
+renderThumbs();
 render();
 </script>
 </body>
 </html>"#,
-        data = data
+        data = data,
+        start_tab = start_tab
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::tray::BusyState;
+    use std::sync::Arc;
+
+    fn shared() -> Shared {
+        Shared {
+            cfg: Arc::new(std::sync::Mutex::new(Config::default())),
+            busy: BusyState::default(),
+            previews: Arc::new(std::sync::Mutex::new(Vec::new())),
+            gallery_port: Arc::new(std::sync::Mutex::new(0)),
+            update_tx: None,
+        }
+    }
+
+    #[test]
+    fn page_has_favorite_tabs_and_buttons() {
+        let s = shared();
+        let all = page_html(&s, false);
+        assert!(all.contains("id=\"tab-all\""));
+        assert!(all.contains("id=\"tab-fav\""));
+        assert!(all.contains("id=\"favbtn\""));
+        assert!(all.contains("/fav/"));
+        assert!(all.contains("let view = 'all';"));
+
+        let fav = page_html(&s, true);
+        assert!(fav.contains("let view = 'fav';"));
+    }
 }

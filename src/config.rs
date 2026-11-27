@@ -93,6 +93,48 @@ pub fn autostart_path() -> PathBuf {
     home_dir().join(".config/autostart/lithescape.desktop")
 }
 
+/// 收藏文件路径：与历史归档分开，不受 365 天裁剪影响，长期保留。
+pub fn favorites_path() -> PathBuf {
+    home_dir().join(".local/state/lithescape/favorites.json")
+}
+
+/// 读取收藏列表，按日期倒序（最新在前）。
+pub fn load_favorites() -> Vec<HistoryItem> {
+    let mut items: Vec<HistoryItem> = fs::read_to_string(favorites_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    items.retain(|h| !h.meta.enddate.is_empty());
+    items.sort_by(|a, b| b.meta.enddate.cmp(&a.meta.enddate));
+    items
+}
+
+pub fn save_favorites(items: &[HistoryItem]) {
+    if let Ok(s) = serde_json::to_string_pretty(items) {
+        let _ = atomic_write(&favorites_path(), &s);
+    }
+}
+
+/// 指定日期是否已收藏
+#[allow(dead_code)]
+pub fn is_favorite(enddate: &str) -> bool {
+    load_favorites().iter().any(|h| h.meta.enddate == enddate)
+}
+
+/// 切换收藏状态，返回切换后是否已收藏
+pub fn toggle_favorite(item: HistoryItem) -> bool {
+    let mut all = load_favorites();
+    if let Some(pos) = all.iter().position(|h| h.meta.enddate == item.meta.enddate) {
+        all.remove(pos);
+        save_favorites(&all);
+        false
+    } else {
+        all.push(item);
+        save_favorites(&all);
+        true
+    }
+}
+
 fn atomic_write(path: &Path, content: &str) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -190,4 +232,50 @@ Hidden=false\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n";
         return false;
     }
     autostart_enabled() == enabled
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample(enddate: &str) -> HistoryItem {
+        HistoryItem {
+            meta: MetaInfo {
+                enddate: enddate.into(),
+                title: "晴天".into(),
+                copyright: "© test".into(),
+                ..Default::default()
+            },
+            image_url: "https://www.bing.com/th?id=OHR.Sunny_ZH-CN1_UHD.jpg".into(),
+        }
+    }
+
+    #[test]
+    fn favorites_toggle_and_persist() {
+        // 用临时 HOME 隔离，避免污染用户真实收藏
+        let tmp = std::env::temp_dir().join(format!("lithescape-fav-test-{}", std::process::id()));
+        let _ = fs::create_dir_all(&tmp);
+        std::env::set_var("HOME", &tmp);
+
+        assert!(load_favorites().is_empty());
+        assert!(!is_favorite("20261127"));
+
+        // 收藏 → 落盘 → 再读仍存在
+        assert!(toggle_favorite(sample("20261127")));
+        assert!(is_favorite("20261127"));
+        assert_eq!(load_favorites().len(), 1);
+
+        // 同一天重复收藏不会增加条目
+        assert!(!toggle_favorite(sample("20261127")));
+        assert_eq!(load_favorites().len(), 0);
+
+        // 不同日期独立存放，按日期倒序
+        assert!(toggle_favorite(sample("20261126")));
+        assert!(toggle_favorite(sample("20261127")));
+        let all = load_favorites();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].meta.enddate, "20261127");
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
 }

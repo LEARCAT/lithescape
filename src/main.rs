@@ -194,6 +194,8 @@ async fn main() -> zbus::Result<()> {
     }
 
     tray::spawn_preview_loader(shared.clone());
+    // 启动即切今日壁纸（后台线程，不阻塞托盘）
+    tray::spawn_startup_apply(shared.clone());
     tray::spawn_periodic(shared.clone());
 
     // 启动时静默检查一次更新：只有发现新版本才弹系统通知，
