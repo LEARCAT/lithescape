@@ -6,6 +6,12 @@
 - 适用环境：deepin V25、amd64（二进制依赖 GLIBC_2.34 及以上）
 - 许可证：[GPL-3.0-or-later](LICENSE)
 
+## 仓库与下载
+
+- Gitee 源码：<https://gitee.com/learcat/lithescape>
+- GitHub 源码：<https://github.com/LEARCAT/lithescape>
+- deb 下载：<https://github.com/LEARCAT/lithescape/releases/latest>
+
 ## 功能
 
 - 自动获取并设置必应每日壁纸，按屏幕分辨率自动选图（UHD / 1920x1080 / 1366x768 / 1280x720）

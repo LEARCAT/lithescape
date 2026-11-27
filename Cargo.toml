@@ -2,7 +2,7 @@
 name = "lithescape"
 version = "0.1.2"
 edition = "2021"
-description = "LitheScape daily wallpaper tray app for deepin V23/V25"
+description = "LitheScape daily wallpaper tray app for deepin V25"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
