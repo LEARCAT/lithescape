@@ -6,6 +6,8 @@
 .debbuild-*/
 deb*build*/
 .build-tmp*/
+# 打包暂存里的二进制（package.sh 每次 cp 进去，属构建产物不入库）
+deb/usr/bin/
 __pycache__/
 *.pyc
 *.pyo
