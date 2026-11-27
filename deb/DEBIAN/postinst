@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+# 刷新图标缓存：deepin 默认主题是 bloom（hicolor 被排除），两个主题都刷
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -f -t /usr/share/icons/bloom 2>/dev/null || true
+    gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+fi
+# 清理 DDE 启动器的图标缓存，避免升级后仍显示旧图标；覆盖 sudo 用户与 root
+for u in "${SUDO_USER:-}" "$(id -un)"; do
+    [ -n "$u" ] || continue
+    h=$(getent passwd "$u" 2>/dev/null | cut -d: -f6)
+    [ -n "$h" ] && [ -d "$h/.cache/deepin/icons" ] && rm -f "$h/.cache/deepin/icons/lithescape"* 2>/dev/null || true
+done
+echo "轻格壁纸已安装。运行 'lithescape &' 启动，或在启动器中打开。"

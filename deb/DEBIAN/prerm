@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+# 退出正在运行的实例
+pkill -x lithescape 2>/dev/null || true

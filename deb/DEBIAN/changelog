@@ -1,0 +1,23 @@
+lithescape (0.1.2) unstable; urgency=medium
+
+  * 画廊「设为壁纸」结果改为桌面通知（自动消失），移除浏览器 alert 弹窗。
+  * 启动器图标改回裸图标名，消除开机自启以外的角标误判。
+  * 版本号改为单一来源 Cargo.toml，打包脚本自动同步 control。
+
+ -- LitheScape  Fri, 27 Nov 2026 12:56:00 +0800
+
+lithescape (0.1.1) unstable; urgency=medium
+
+  * 新增本地历史归档，壁纸预览突破必应 8 天限制（用得越久历史越长）。
+  * 修复画廊切换图片时大图不更新的问题。
+  * 托盘架构重构：DBus 回调只投递事件，业务逻辑异步处理，不再拖累整个托盘。
+  * 移除「每日测验」，启动器更名为「轻格壁纸」。
+
+ -- LitheScape  Fri, 27 Nov 2026 12:40:00 +0800
+
+lithescape (0.1.0) unstable; urgency=high
+
+  * 首个版本：必应每日壁纸自动更换、SNI 托盘菜单、大图画廊、
+    分辨率自适应、开机自启、软件更新检查。
+
+ -- LitheScape  Fri, 27 Nov 2026 11:58:00 +0800

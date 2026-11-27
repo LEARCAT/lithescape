@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=轻格壁纸
+Name[zh_CN]=轻格壁纸
+GenericName=LitheScape
+Comment=deepin 下的必应每日壁纸托盘程序
+Comment[zh_CN]=deepin 下的必应每日壁纸托盘程序
+Exec=/usr/bin/lithescape
+Icon=lithescape
+StartupWMClass=lithescape
+Terminal=false
+Categories=Utility;
+StartupNotify=false
