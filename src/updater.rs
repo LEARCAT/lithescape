@@ -206,8 +206,23 @@ fn cache_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
+/// 从 curl `-#` 进度输出里解析百分比。
+/// 进度行形如 "#####          52.6%"，以 \r 刷新；取出现的最后一个百分比。
+fn parse_curl_percent(chunk: &str) -> Option<u32> {
+    let mut last = None;
+    for token in chunk.split_whitespace() {
+        if let Some(num) = token.strip_suffix('%') {
+            if let Ok(v) = num.parse::<f32>() {
+                last = Some(v.round() as u32);
+            }
+        }
+    }
+    last
+}
+
 /// 下载 deb 到缓存目录，返回本地路径。
-pub fn download(release: &Release) -> Result<PathBuf, String> {
+/// progress: 可选进度回调（0-100），用于通知栏原地更新下载进度。
+pub fn download(release: &Release, mut progress: Option<&mut dyn FnMut(u32)>) -> Result<PathBuf, String> {
     let url = release
         .deb_url
         .as_ref()
@@ -233,9 +248,10 @@ pub fn download(release: &Release) -> Result<PathBuf, String> {
         if candidate.is_empty() {
             continue;
         }
-        let status = Command::new("curl")
+        let mut child = Command::new("curl")
             .args([
                 "-fL",
+                "-#",
                 "--connect-timeout",
                 "10",
                 "--max-time",
@@ -244,8 +260,50 @@ pub fn download(release: &Release) -> Result<PathBuf, String> {
                 &tmp.to_string_lossy(),
                 candidate,
             ])
-            .status()
+            .stderr(std::process::Stdio::piped())
+            .spawn()
             .map_err(|e| format!("调用 curl 下载失败: {e}"))?;
+
+        // 读 stderr 进度（curl 用 \r 刷新），解析百分比并节流回调
+        let has_progress = progress.is_some();
+        if has_progress {
+            if let Some(stderr) = child.stderr.as_mut() {
+                use std::io::Read;
+                let mut buf = [0u8; 4096];
+                let mut acc = String::new();
+                let mut last_report: Option<u32> = None;
+                loop {
+                    match stderr.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            acc.push_str(&String::from_utf8_lossy(&buf[..n]));
+                            if let Some(pct) = parse_curl_percent(&acc) {
+                                // 只在整数百分比变化时回调，避免刷屏
+                                if last_report != Some(pct) {
+                                    last_report = Some(pct);
+                                    if let Some(cb) = progress.as_mut() {
+                                        cb(pct);
+                                    }
+                                }
+                            }
+                            // 控制累加串长度，只保留尾部片段
+                            if acc.len() > 8192 {
+                                acc = acc
+                                    .chars()
+                                    .rev()
+                                    .take(1024)
+                                    .collect::<String>()
+                                    .chars()
+                                    .rev()
+                                    .collect();
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+        }
+        let status = child.wait().map_err(|e| format!("等待 curl 结束失败: {e}"))?;
         if status.success() {
             ok = true;
             break;
@@ -327,7 +385,11 @@ pub fn install(path: &PathBuf) -> (InstallOutcome, String) {
 /// 供托盘菜单调用：只检查 + 下载，不安装。
 /// 返回 (通知文案, 下载好的 deb 路径)。主循环收到路径后先退出旧版，
 /// 再由退出清理段拉起 --apply-update 助手，避免"旧版运行中就替换二进制"。
-pub fn prepare_update(current: &str) -> (String, Option<PathBuf>) {
+/// progress: 下载进度回调（0-100），供通知栏原地更新。
+pub fn prepare_update(
+    current: &str,
+    progress: Option<&mut dyn FnMut(u32)>,
+) -> (String, Option<PathBuf>) {
     let release = match check(current) {
         Some(r) => r,
         None => {
@@ -337,7 +399,7 @@ pub fn prepare_update(current: &str) -> (String, Option<PathBuf>) {
             )
         }
     };
-    match download(&release) {
+    match download(&release, progress) {
         Ok(p) => (
             format!("已下载新版本 {}，即将退出旧版并安装", release.version),
             Some(p),
@@ -413,6 +475,17 @@ mod tests {
             json_deb_url(text).as_deref(),
             Some("https://gitee.com/learcat/lithescape/releases/download/v0.1.4/lithescape_0.1.4_amd64.deb")
         );
+    }
+
+    #[test]
+    fn curl_percent_parsing() {
+        // curl -# 用 \r 刷新，形如 "#####     52.6%\r#########  100.0%"
+        assert_eq!(parse_curl_percent("###          52.6%"), Some(53));
+        assert_eq!(parse_curl_percent("\r#########  100.0%"), Some(100));
+        assert_eq!(parse_curl_percent("#=#=#"), None);
+        // 取最后一个百分比
+        assert_eq!(parse_curl_percent("  20.0%\r  87.3%"), Some(87));
+        assert_eq!(parse_curl_percent(""), None);
     }
 
     #[test]

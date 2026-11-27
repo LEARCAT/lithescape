@@ -1,3 +1,10 @@
+lithescape (0.2.4) unstable; urgency=medium
+
+  * 优化「软件更新」反馈：点击后立即提示正在检查，下载过程用同一条通知原地显示百分比进度条，
+    完成后提示正在安装，全程可见，不再让用户误以为更新没有进行。
+
+ -- LitheScape  Fri, 27 Nov 2026 21:20:00 +0800
+
 lithescape (0.2.3) unstable; urgency=medium
 
   * 根治更新后不自动启动：改由 deb 安装脚本（postinst）在装包完成后直接拉起托盘，

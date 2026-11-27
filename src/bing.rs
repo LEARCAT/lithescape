@@ -594,6 +594,51 @@ pub fn notify(title: &str, body: &str) {
         .spawn();
 }
 
+/// 发送/更新一条可显示进度条的通知，返回通知 id 供后续原地替换。
+///
+/// 用 gdbus 直接调 org.freedesktop.Notifications.Notify：
+///   · replaces_id 传上次返回的 id，可在同一条通知上更新，不刷屏；
+///   · hints 里的 value(int32) 让支持的服务显示进度条。
+/// percent=0 或解析失败时退回普通 notify（不带进度条）。
+pub fn notify_progress(title: &str, body: &str, percent: u32, replaces_id: u32) -> Option<u32> {
+    let pct = percent.min(100) as i32;
+    let hints = format!("{{'value': <int32 {pct}>}}");
+    let out = Command::new("gdbus")
+        .args([
+            "call",
+            "--session",
+            "--dest",
+            "org.freedesktop.Notifications",
+            "--object-path",
+            "/org/freedesktop/Notifications",
+            "--method",
+            "org.freedesktop.Notifications.Notify",
+            "轻格壁纸",
+            &replaces_id.to_string(),
+            "lithescape",
+            title,
+            body,
+            "@as []",
+            &hints,
+            "10000",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    // 输出形如 "(uint32 76,)" —— 提取数字作为下次替换用的 id
+    let text = String::from_utf8_lossy(&out.stdout);
+    let id = text
+        .split("uint32")
+        .nth(1)?
+        .split(|c: char| !c.is_ascii_digit())
+        .next()?
+        .parse::<u32>()
+        .ok()?;
+    Some(id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
