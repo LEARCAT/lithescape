@@ -1,3 +1,9 @@
+lithescape (0.2.1) unstable; urgency=medium
+
+  * 「我的收藏」页自动更换设置改为与「已收藏」同一行：默认只显示开关，开启后就地展开更换时间设置。
+
+ -- LitheScape  Fri, 27 Nov 2026 19:50:00 +0800
+
 lithescape (0.2.0) unstable; urgency=medium
 
   * 当前使用收藏 / 用户选定壁纸时，启动不再强制切回每日壁纸；使用每日壁纸时仍自动跟随当日壁纸。
