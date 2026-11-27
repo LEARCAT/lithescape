@@ -71,8 +71,8 @@ fn version_from_deb(path: &std::path::Path) -> Option<String> {
     }
 }
 
-/// 拉起一个脱离会话的等待助手：系统安装器装完新版后由它自动启动程序。
-fn spawn_waiter(version: &str) {
+/// 拉起一个脱离会话的等待助手：系统安装器装完新版后由它自动启动程序并清理缓存 deb。
+fn spawn_waiter(deb: &std::path::Path) {
     let exe = match std::env::current_exe() {
         Ok(p) => p,
         Err(e) => {
@@ -83,14 +83,14 @@ fn spawn_waiter(version: &str) {
     let mut cmd = std::process::Command::new("setsid");
     cmd.arg(&exe)
         .arg("--wait-and-start")
-        .arg(version)
+        .arg(deb)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     if cmd.spawn().is_err() {
         let _ = std::process::Command::new(&exe)
             .arg("--wait-and-start")
-            .arg(version)
+            .arg(deb)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -98,15 +98,23 @@ fn spawn_waiter(version: &str) {
     }
 }
 
-/// 最多等 15 分钟，每 2 秒查一次 dpkg 版本；新版本落地后自动拉起程序。
+/// 最多等 15 分钟，每 2 秒查一次 dpkg 版本；新版本落地后清理缓存 deb 并自动拉起程序。
 /// 用户取消安装则超时静默退出，不会留下常驻进程。
-fn wait_for_install_then_start(version: &str) {
+fn wait_for_install_then_start(deb: &std::path::PathBuf) {
+    let version = version_from_deb(deb);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(900);
     while std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_secs(2));
-        if updater::installed_version().as_deref() == Some(version) {
+        if version
+            .as_deref()
+            .map_or(false, |v| updater::installed_version().as_deref() == Some(v))
+        {
             // 给 dpkg 的配置收尾留一点时间，避免拉起时被替换中的旧二进制影响
             std::thread::sleep(std::time::Duration::from_millis(800));
+            // 安装器已读完 deb，此时清理本次缓存包
+            if let Err(e) = std::fs::remove_file(deb) {
+                eprintln!("[warn] 清理更新缓存失败: {e}");
+            }
             bing::notify("软件更新", "安装完成，已自动启动轻格壁纸");
             spawn_current_binary();
             return;
@@ -135,10 +143,10 @@ async fn main() -> zbus::Result<()> {
         return Ok(());
     }
 
-    // 安装等待助手：系统安装器完成安装后自动拉起新版（见 spawn_waiter）。
+    // 安装等待助手：系统安装器完成安装后清理缓存 deb 并自动拉起新版（见 spawn_waiter）。
     if let Some(pos) = args.iter().position(|a| a == "--wait-and-start") {
-        if let Some(ver) = args.get(pos + 1) {
-            wait_for_install_then_start(ver);
+        if let Some(deb) = args.get(pos + 1) {
+            wait_for_install_then_start(&std::path::PathBuf::from(deb));
         }
         return Ok(());
     }
@@ -156,10 +164,8 @@ async fn main() -> zbus::Result<()> {
                     spawn_current_binary();
                 }
                 updater::InstallOutcome::OpenedInstaller => {
-                    // 安装器还要用户点几步，交给等待助手，装完自动启动
-                    if let Some(ver) = version_from_deb(&path) {
-                        spawn_waiter(&ver);
-                    }
+                    // 安装器还要用户点几步，交给等待助手：装完清理缓存 deb 并自动启动
+                    spawn_waiter(&path);
                 }
                 updater::InstallOutcome::Failed => {}
             }

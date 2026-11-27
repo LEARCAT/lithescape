@@ -1,3 +1,10 @@
+lithescape (0.2.5) unstable; urgency=medium
+
+  * 更新安装成功后自动清理本次下载的 deb 缓存，不再堆积旧安装包。
+    系统安装器路径由等待助手在装完后清理；安装失败时保留供手动安装。
+
+ -- LitheScape  Sat, 28 Nov 2026 00:05:00 +0800
+
 lithescape (0.2.4) unstable; urgency=medium
 
   * 优化「软件更新」反馈：点击后立即提示正在检查，下载过程用同一条通知原地显示百分比进度条，
