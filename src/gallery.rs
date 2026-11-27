@@ -141,8 +141,11 @@ fn handle(stream: &mut TcpStream, shared: &Shared) {
             "application/json; charset=utf-8",
             json.as_bytes(),
         );
-    } else if path == "/favicon.ico" {
-        respond(stream, 404, "image/x-icon", b"");
+    } else if path == "/favicon.ico" || path == "/favicon.png" {
+        // 网页标签图标用软件自身图标（内嵌 32x32 PNG，不依赖安装路径）
+        const FAVICON: &[u8] =
+            include_bytes!("../deb/usr/share/icons/hicolor/32x32/apps/lithescape.png");
+        respond(stream, 200, "image/png", FAVICON);
     } else {
         respond(stream, 404, "text/plain", b"not found");
     }
@@ -212,8 +215,11 @@ fn page_html(shared: &Shared, fav_view: bool) -> String {
         .iter()
         .map(|h| h.meta.enddate.as_str())
         .collect();
+    // 画廊按「更早 → 今天」排列（与托盘「上一张=更早、下一张=更新」一致）：
+    // previews 本身是今天在前、越往后越早，这里反转成最旧在前、今天在末尾。
+    // 注意只反转展示顺序，index 仍是壁纸的真实序号，/img //set //fav 按 index 查找不受影响。
     let mut items = Vec::new();
-    for item in &previews {
+    for item in previews.iter().rev() {
         let story = if item.meta.copyrightlink.is_empty() {
             String::new()
         } else {
@@ -239,6 +245,7 @@ fn page_html(shared: &Shared, fav_view: bool) -> String {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/png" href="/favicon.png">
 <title>LitheScape 壁纸画廊</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -297,7 +304,8 @@ body{{font-family:"Noto Sans CJK SC","Microsoft YaHei",sans-serif;background:#11
 </div>
 <script>
 const DATA = {data};
-let cur = 0;
+// DATA 已按「最旧 → 今天」排列，默认停在最新的今天（末尾）
+let cur = DATA.length ? DATA.length - 1 : 0;
 let view = '{start_tab}';
 const $ = id => document.getElementById(id);
 const photo = $('photo');
@@ -343,14 +351,14 @@ function render() {{
   }}
   if (cur >= list.length) cur = list.length - 1;
   const it = list[cur];
-  $('title').textContent = (it.d ? '' : '') + (view === 'fav' ? '收藏 · ' : (cur === 0 ? '今天 · ' : cur + ' 天前 · ')) + it.t;
+  $('title').textContent = (view === 'fav' ? '收藏 · ' : (it.i === 0 ? '今天 · ' : it.i + ' 天前 · ')) + it.t;
   $('date').textContent = fmtDate(it.d);
   $('favbtn').disabled = $('story').disabled = $('setbtn').disabled = false;
   $('favbtn').textContent = it.f ? '★ 已收藏' : '☆ 收藏';
   $('favbtn').classList.toggle('fav-on', !!it.f);
   $('story').disabled = !it.s;
-  $('prev').disabled = cur >= list.length - 1;
-  $('next').disabled = cur <= 0;
+  $('prev').disabled = cur <= 0;
+  $('next').disabled = cur >= list.length - 1;
   document.querySelectorAll('.thumb').forEach((el, k) => el.classList.toggle('active', k === cur));
   loadMain();
 }}
@@ -365,18 +373,21 @@ function go(step) {{
 
 function switchView(v) {{
   view = v;
-  cur = 0;
+  // 反转后最新的Today在末尾，切标签默认停在最新一张
+  const list = visible();
+  cur = list.length ? list.length - 1 : 0;
   renderThumbs();
   render();
 }}
 $('tab-all').onclick = () => switchView('all');
 $('tab-fav').onclick = () => switchView('fav');
 
-$('prev').onclick = () => go(1);
-$('next').onclick = () => go(-1);
+// 与托盘一致：左箭头「上一张」往更早走（cur-1），右箭头「下一张」往更新走（cur+1）
+$('prev').onclick = () => go(-1);
+$('next').onclick = () => go(1);
 document.addEventListener('keydown', e => {{
-  if (e.key === 'ArrowRight') go(-1);
-  if (e.key === 'ArrowLeft') go(1);
+  if (e.key === 'ArrowRight') go(1);
+  if (e.key === 'ArrowLeft') go(-1);
 }});
 $('story').onclick = () => {{ const it = visible()[cur]; if (it && it.s) window.open(it.s, '_blank'); }};
 $('setbtn').onclick = async () => {{
@@ -425,7 +436,7 @@ function renderThumbs() {{
     const im = document.createElement('img');
     im.className = 'thumb' + (k === cur ? ' active' : '');
     im.alt = fmtDate(it.d);
-    im.title = (it.f ? '★ ' : '') + (view === 'all' && k === 0 ? '今天' : k + ' 天前') + ' · ' + it.t;
+    im.title = (it.f ? '★ ' : '') + (view === 'all' ? (it.i === 0 ? '今天' : it.i + ' 天前') : '收藏') + ' · ' + it.t;
     im.src = '/img/' + it.i + '.jpg' + (it.f ? '?f=1' : '');
     im.onerror = () => {{ im.style.opacity = '.2'; }};
     im.onclick = () => {{ cur = k; render(); }};
@@ -471,5 +482,21 @@ mod tests {
 
         let fav = page_html(&s, true);
         assert!(fav.contains("let view = 'fav';"));
+    }
+
+    #[test]
+    fn page_uses_software_favicon() {
+        let html = page_html(&shared(), false);
+        assert!(html.contains("/favicon.png"));
+        assert!(html.contains("rel=\"icon\""));
+    }
+
+    #[test]
+    fn gallery_nav_matches_tray_direction() {
+        // 画廊「上一张」往更早走（go(-1)），「下一张」往更新走（go(1)），
+        // 与托盘 ID_PREV=idx+1(更早) / ID_NEXT=idx-1(更新) 语义一致。
+        let html = page_html(&shared(), false);
+        assert!(html.contains("$('prev').onclick = () => go(-1);"));
+        assert!(html.contains("$('next').onclick = () => go(1);"));
     }
 }
