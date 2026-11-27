@@ -143,6 +143,48 @@ pub fn check(current: &str) -> Option<Release> {
     }
 }
 
+/// 启动时静默检查一次：只有确实发现新版本才返回提示文案。
+/// 已是最新、网络不可达、版本解析失败一律返回 None，不打扰用户。
+pub fn startup_hint(current: &str) -> Option<String> {
+    let release = check(current)?;
+    Some(format_update_hint(&release))
+}
+
+/// 把 Release 信息拼成一条系统通知文案（供启动检查与菜单更新共用风格）。
+fn format_update_hint(release: &Release) -> String {
+    // 优先取更新说明里的第一条变更项，避免把标题行重复念一遍。
+    let lines: Vec<&str> = release
+        .notes
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    let brief = lines
+        .iter()
+        .copied()
+        .find(|l| l.starts_with('-') || l.starts_with('*'))
+        .or_else(|| lines.iter().copied().find(|l| !l.contains("LitheScape")))
+        .map(|l| {
+            l.trim_start_matches(|c| c == '-' || c == '*')
+                .trim()
+        })
+        .unwrap_or("")
+        .chars()
+        .take(60)
+        .collect::<String>();
+    if brief.is_empty() {
+        format!(
+            "发现新版本 {}。点击托盘菜单「软件更新」下载安装。",
+            release.version
+        )
+    } else {
+        format!(
+            "发现新版本 {}：{}。点击托盘菜单「软件更新」下载安装。",
+            release.version, brief
+        )
+    }
+}
+
 /// 缓存目录：~/.cache/lithescape/。
 fn cache_dir() -> Option<PathBuf> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/LEARCAT".to_string());
@@ -288,6 +330,19 @@ mod tests {
             json_deb_url(text).as_deref(),
             Some("https://x/lithescape_0.1.2_amd64.deb")
         );
+    }
+
+    #[test]
+    fn update_hint_mentions_menu() {
+        let r = Release {
+            version: "0.1.3".into(),
+            deb_url: None,
+            notes: "轻格壁纸 LitheScape 0.1.3\n- 启动时检查更新".into(),
+        };
+        let hint = format_update_hint(&r);
+        assert!(hint.contains("0.1.3"));
+        assert!(hint.contains("「软件更新」"));
+        assert!(hint.contains("启动时检查更新"));
     }
 }
 

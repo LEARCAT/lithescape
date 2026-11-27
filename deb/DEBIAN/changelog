@@ -1,3 +1,10 @@
+lithescape (0.1.3) unstable; urgency=medium
+
+  * 启动时静默检查一次更新：仅当发现新版本才弹出系统通知，已是最新或网络不可达时不打扰。
+  * 更新提示只提示、不自动安装，点击托盘菜单「软件更新」执行下载与安装。
+
+ -- LitheScape  Fri, 27 Nov 2026 13:40:00 +0800
+
 lithescape (0.1.2) unstable; urgency=medium
 
   * 画廊「设为壁纸」结果改为桌面通知（自动消失），移除浏览器 alert 弹窗。

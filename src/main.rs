@@ -1,4 +1,4 @@
-//! LitheScape 轻格壁纸 —— deepin V23/V25 系统托盘程序（Rust / zbus SNI）
+//! LitheScape 轻格壁纸 —— deepin V25 系统托盘程序（Rust / zbus SNI）
 
 mod bing;
 mod config;
@@ -136,6 +136,14 @@ async fn main() -> zbus::Result<()> {
 
     tray::spawn_preview_loader(shared.clone());
     tray::spawn_periodic(shared.clone());
+
+    // 启动时静默检查一次更新：只有发现新版本才弹系统通知，
+    // 已是最新或网络不可达都不提示。放在独立线程，不阻塞托盘启动。
+    tokio::task::spawn_blocking(|| {
+        if let Some(hint) = updater::startup_hint(VERSION) {
+            bing::notify("软件更新", &hint);
+        }
+    });
 
     eprintln!("[info] 轻格壁纸托盘已启动 v{VERSION}");
 
