@@ -26,7 +26,6 @@ const ID_UPDATE: i32 = 8;
 const ID_QUIT: i32 = 9;
 const ID_PREVIEW: i32 = 10; // 壁纸预览
 const ID_FAVORITES: i32 = 11; // 壁纸收藏
-const ID_FAV_LOOP: i32 = 12; // 收藏自动更换
 const SEP_1: i32 = 101;
 const SEP_2: i32 = 102;
 const SEP_3: i32 = 103;
@@ -154,7 +153,6 @@ fn menu_layout() -> (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) {
     let state: State = load_state();
     let idx = state.current_index;
     let autostart = autostart_enabled();
-    let fav_loop = load_fav_slideshow().enabled;
     // 翻页边界由本地归档实际天数决定（Bing 只给 8 天，归档会随时间增长）
     let total = crate::config::load_history().len() as i32;
     let max_idx = (total - 1).max(0);
@@ -169,7 +167,6 @@ fn menu_layout() -> (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) {
         separator(SEP_1),
         menu_item(ID_PREVIEW, "壁纸预览", true, None),
         menu_item(ID_FAVORITES, "壁纸收藏", true, None),
-        menu_item(ID_FAV_LOOP, "收藏自动更换", true, Some(fav_loop)),
         separator(SEP_4),
         menu_item(ID_STORY, "图片故事", true, None),
         separator(SEP_2),
@@ -385,34 +382,6 @@ pub fn dispatch_click(shared: &Shared, id: i32) {
         ID_STORY => {
             if let Some(meta) = state.meta.get(&idx.to_string()) {
                 bing::open_url(&meta.copyrightlink);
-            }
-        }
-        ID_FAV_LOOP => {
-            let mut fav_cfg = load_fav_slideshow();
-            let enabling = !fav_cfg.enabled;
-            fav_cfg.enabled = enabling;
-            // 开启时清空计时，让轮播线程在数秒内先切到一张收藏壁纸
-            if enabling {
-                fav_cfg.last_switch.clear();
-            }
-            save_fav_slideshow(&fav_cfg);
-            if enabling && load_favorites().is_empty() {
-                bing::notify(
-                    "收藏自动更换",
-                    "已开启，但还没有收藏壁纸；请先在「壁纸收藏」中添加",
-                );
-            } else {
-                if enabling {
-                    start_favorite_rotation();
-                }
-                bing::notify(
-                    "收藏自动更换",
-                    if enabling {
-                        "已开启，将按设定间隔更换收藏壁纸"
-                    } else {
-                        "已关闭"
-                    },
-                );
             }
         }
         ID_AUTO => {

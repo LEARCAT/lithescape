@@ -1,3 +1,10 @@
+lithescape (0.2.7) unstable; urgency=medium
+
+  * 去掉托盘菜单中的「收藏自动更换」项；该功能仍可在「壁纸收藏」页面的
+    自动更换开关中设置，菜单更简洁。
+
+ -- LitheScape  Sat, 28 Nov 2026 00:42:00 +0800
+
 lithescape (0.2.6) unstable; urgency=medium
 
   * 软件更新通知改为只发头尾两条：点击立即提示"正在检查更新"，
