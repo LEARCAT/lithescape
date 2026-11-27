@@ -1,3 +1,10 @@
+lithescape (0.2.3) unstable; urgency=medium
+
+  * 根治更新后不自动启动：改由 deb 安装脚本（postinst）在装包完成后直接拉起托盘，
+    不再依赖旧托盘进程或更新助手的代码版本；prerm 只退出托盘、保留更新助手。
+
+ -- LitheScape  Fri, 27 Nov 2026 21:05:00 +0800
+
 lithescape (0.2.2) unstable; urgency=medium
 
   * 修复通过系统安装器完成更新后无法自动启动的问题：新增后台等待助手，检测到新版落地后自动拉起程序。

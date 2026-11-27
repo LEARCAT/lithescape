@@ -1,1 +1,76 @@
-IyEvYmluL3NoCnNldCAtZQojIOWIt+aWsOWbvuagh+e8k+WtmO+8mmRlZXBpbiDpu5jorqTkuLvpopjmmK8gYmxvb23vvIhoaWNvbG9yIOiiq+aOkumZpO+8ie+8jOS4pOS4quS4u+mimOmDveWItwppZiBjb21tYW5kIC12IGd0ay11cGRhdGUtaWNvbi1jYWNoZSA+L2Rldi9udWxsIDI+JjE7IHRoZW4KICAgIGd0ay11cGRhdGUtaWNvbi1jYWNoZSAtZiAtdCAvdXNyL3NoYXJlL2ljb25zL2Jsb29tIDI+L2Rldi9udWxsIHx8IHRydWUKICAgIGd0ay11cGRhdGUtaWNvbi1jYWNoZSAtZiAtdCAvdXNyL3NoYXJlL2ljb25zL2hpY29sb3IgMj4vZGV2L251bGwgfHwgdHJ1ZQpmaQojIOa4heeQhiBEREUg5ZCv5Yqo5Zmo55qE5Zu+5qCH57yT5a2Y77yM6YG/5YWN5Y2H57qn5ZCO5LuN5pi+56S65pen5Zu+5qCH77yb6KaG55uWIHN1ZG8g55So5oi35LiOIHJvb3QKZm9yIHUgaW4gIiR7U1VET19VU0VSOi19IiAiJChpZCAtdW4pIjsgZG8KICAgIFsgLW4gIiR1IiBdIHx8IGNvbnRpbnVlCiAgICBoPSQoZ2V0ZW50IHBhc3N3ZCAiJHUiIDI+L2Rldi9udWxsIHwgY3V0IC1kOiAtZjYpCiAgICBbIC1uICIkaCIgXSAmJiBbIC1kICIkaC8uY2FjaGUvZGVlcGluL2ljb25zIiBdICYmIHJtIC1mICIkaC8uY2FjaGUvZGVlcGluL2ljb25zL2xpdGhlc2NhcGUiKiAyPi9kZXYvbnVsbCB8fCB0cnVlCmRvbmUKZWNobyAi6L275qC85aOB57q45bey5a6J6KOF44CC6L+Q6KGMICdsaXRoZXNjYXBlICYnIOWQr+WKqO+8jOaIluWcqOWQr+WKqOWZqOS4reaJk+W8gOOAgiIK
+#!/bin/sh
+set -e
+# 刷新图标缓存：deepin 默认主题是 bloom（hicolor 被排除），两个主题都刷
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -f -t /usr/share/icons/bloom 2>/dev/null || true
+    gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+fi
+# 清理 DDE 启动器的图标缓存，避免升级后仍显示旧图标；覆盖 sudo 用户与 root
+for u in "${SUDO_USER:-}" "$(id -un)"; do
+    [ -n "$u" ] || continue
+    h=$(getent passwd "$u" 2>/dev/null | cut -d: -f6)
+    [ -n "$h" ] && [ -d "$h/.cache/deepin/icons" ] && rm -f "$h/.cache/deepin/icons/lithescape"* 2>/dev/null || true
+done
+
+# 安装 / 升级后自动拉起托盘。
+# 背景：软件更新走 dpkg 安装时，旧托盘进程可能仍持有旧二进制的 current_exe()，
+# 由它拉起的助手会跑旧代码而无法启动新版。把启动动作放进 dpkg 的 postinst，
+# 由安装流程直接拉起，不依赖旧进程或助手代码版本，从根本上保证装完就启动。
+start_tray() {
+    # 1) 确定图形会话用户：sudo 用户 > pkexec 用户 > 有 session bus 的普通用户
+    user="${SUDO_USER:-}"
+    if [ -z "$user" ] && [ -n "${PKEXEC_UID:-}" ]; then
+        user=$(getent passwd "$PKEXEC_UID" 2>/dev/null | cut -d: -f1)
+    fi
+    if [ -z "$user" ] || [ "$user" = "root" ]; then
+        for d in /run/user/[0-9]*; do
+            [ -S "$d/bus" ] || continue
+            uid=${d##*/}
+            [ "$uid" -ge 1000 ] 2>/dev/null || continue
+            u=$(getent passwd "$uid" 2>/dev/null | cut -d: -f1)
+            if [ -n "$u" ]; then user="$u"; break; fi
+        done
+    fi
+    [ -n "$user" ] || return 0
+    [ "$user" != "root" ] || return 0
+    uid=$(id -u "$user" 2>/dev/null) || return 0
+    runtime="/run/user/$uid"
+    [ -S "$runtime/bus" ] || return 0  # 无图形会话（纯命令行安装）则跳过
+
+    # 2) DISPLAY：优先从该用户已有进程继承，取不到就用 :0
+    display=""
+    for p in $(pgrep -u "$user" 2>/dev/null | head -40); do
+        d=$(tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | sed -n 's/^DISPLAY=//p' | head -1)
+        if [ -n "$d" ]; then display="$d"; break; fi
+    done
+    [ -n "$display" ] || display=":0"
+
+    # 3) 幂等：已有实例持有单实例锁就不重复拉起
+    if runuser -u "$user" -- env \
+        DISPLAY="$display" \
+        XDG_RUNTIME_DIR="$runtime" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+        dbus-send --session --dest=org.freedesktop.DBus --type=method_call --print-reply \
+        /org/freedesktop/DBus org.freedesktop.DBus.GetNameOwner \
+        string:com.deepin.LitheScape >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # 4) 以会话用户身份、脱离控制终端后台启动
+    runuser -u "$user" -- env \
+        DISPLAY="$display" \
+        XDG_RUNTIME_DIR="$runtime" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+        setsid /usr/bin/lithescape >/dev/null 2>&1 < /dev/null &
+    return 0
+}
+
+case "$1" in
+    configure)
+        # 等 prerm 的 pkill 与 D-Bus 锁释放完成
+        sleep 1
+        start_tray || true
+        ;;
+esac
+
+echo "轻格壁纸已安装，托盘将自动启动。"
