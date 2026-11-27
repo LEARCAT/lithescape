@@ -10,7 +10,8 @@
 
 - Gitee 源码：<https://gitee.com/learcat/lithescape>
 - GitHub 源码：<https://github.com/LEARCAT/lithescape>
-- deb 下载：<https://github.com/LEARCAT/lithescape/releases/latest>
+- deb 下载（Gitee）：<https://gitee.com/learcat/lithescape/releases/latest>
+- deb 下载（GitHub）：<https://github.com/LEARCAT/lithescape/releases/latest>
 
 ## 功能
 
