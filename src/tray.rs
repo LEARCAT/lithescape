@@ -497,43 +497,32 @@ impl DbMenu {
     ) -> zbus::Result<()>;
 }
 
-/// 软件更新：检查 + 下载，全程用同一条可替换通知反馈进度，最后把 deb 路径
-/// 回传主循环。旧进程随后退出释放 D-Bus 名称，由 --apply-update 助手安装。
+/// 软件更新：检查 + 下载，只发头尾两条通知，最后把 deb 路径回传主循环。
+/// 旧进程随后退出释放 D-Bus 名称，由 --apply-update 助手安装。
 ///
-/// 反馈分四段：正在检查 → 发现新版本 → 下载进度（带进度条）→ 下载完成 / 安装中。
-/// 用 replaces_id 原地更新同一条通知，既让用户看到进度，又不刷屏。
+/// deepin V25 的通知中心不渲染 value 进度条，且 replaces_id 不会原地替换，
+/// 逐百分比推送会堆一长串通知卡片。因此这里只发两条：
+///   头：「正在检查更新…」点击立即反馈
+///   尾：下载完成 / 已是最新 / 失败，一条结果
+/// 下载过程静默，不弹通知。
 fn check_update(_cfg: &Config, update_tx: Option<UnboundedSender<PathBuf>>) {
     // 1) 点击即反馈：立刻弹「正在检查更新」，避免用户以为没反应
-    let mut id = bing::notify_progress("软件更新", "正在检查更新…", 0, 0).unwrap_or(0);
-    let bump = |pct: u32, id: &mut u32, title: &str, body: String| {
-        if let Some(new_id) = bing::notify_progress(title, &body, pct, *id) {
-            *id = new_id;
-        }
+    let id = bing::notify_progress("软件更新", "正在检查更新…", 0, 0).unwrap_or(0);
+
+    // 2) 下载阶段静默，不逐百分比推送通知
+    let (msg, deb) = crate::updater::prepare_update(VERSION, None);
+
+    // 3) 只发一条结果通知（标准桌面替换头那条；deepin 上呈现为头尾两条）
+    let final_msg = if deb.is_some() {
+        format!("{msg}，正在安装…")
+    } else {
+        msg
     };
+    let _ = bing::notify_progress("软件更新", &final_msg, 100, id);
 
-    // 2) 下载阶段：把百分比原地更新到同一条通知
-    let mut progress = |pct: u32| {
-        bump(
-            pct,
-            &mut id,
-            "正在下载更新",
-            format!("新版本 {VERSION} → 下载中 {pct}%"),
-        );
-    };
-
-    let (msg, deb) = crate::updater::prepare_update(VERSION, Some(&mut progress));
-
-    match deb {
-        Some(path) => {
-            // 3) 下载完成：切到安装阶段提示（助手马上接管）
-            bump(100, &mut id, "软件更新", format!("{msg}，正在安装…"));
-            if let Some(tx) = update_tx {
-                let _ = tx.send(path);
-            }
-        }
-        None => {
-            // 4) 已是最新 / 失败：原地更新为最终结果
-            bump(100, &mut id, "软件更新", msg);
+    if let Some(path) = deb {
+        if let Some(tx) = update_tx {
+            let _ = tx.send(path);
         }
     }
 }
