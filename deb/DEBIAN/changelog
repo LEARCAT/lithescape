@@ -1,3 +1,10 @@
+lithescape (0.1.9) unstable; urgency=medium
+
+  * 壁纸画廊排序改为「更早 → 今天」，左右导航与托盘「上一张 / 下一张」方向一致。
+  * 画廊网页标签图标改为软件自身图标（内嵌 PNG，不依赖安装路径）。
+
+ -- LitheScape  Fri, 27 Nov 2026 18:38:00 +0800
+
 lithescape (0.1.8) unstable; urgency=medium
 
   * 左键点击托盘图标直接进入壁纸预览页面（中键仍打开图片故事）。
