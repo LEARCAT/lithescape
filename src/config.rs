@@ -36,6 +36,8 @@ pub struct State {
     pub original_background_uris: Vec<String>,
     /// 启动前的系统壁纸轮播配置（JSON），供恢复用
     pub original_slideshow: String,
+    /// 壁纸来源模式：daily=跟随每日壁纸，favorite=用户选定/收藏的壁纸
+    pub wallpaper_mode: String,
     /// 每一天的元信息，键为 idx (0..=7)
     pub meta: std::collections::HashMap<String, MetaInfo>,
 }
@@ -116,9 +118,81 @@ pub fn save_favorites(items: &[HistoryItem]) {
 }
 
 /// 指定日期是否已收藏
-#[allow(dead_code)]
 pub fn is_favorite(enddate: &str) -> bool {
     load_favorites().iter().any(|h| h.meta.enddate == enddate)
+}
+
+/// 当前生效的壁纸是否是用户收藏的壁纸。
+/// 依据 state.last_date（设置壁纸时写入的 enddate）判断，
+/// 启动与定时检查用它决定是否跳过「每日壁纸」。
+pub fn current_is_favorite() -> bool {
+    let st = load_state();
+    !st.last_date.is_empty() && is_favorite(&st.last_date)
+}
+
+/// 当前是否处于「收藏 / 用户选定壁纸」模式。
+/// 老版本 state 没有 wallpaper_mode 字段，首次升级时按当前壁纸是否已收藏推断一次。
+pub fn is_favorite_mode() -> bool {
+    let st = load_state();
+    if !st.wallpaper_mode.is_empty() {
+        return st.wallpaper_mode == "favorite";
+    }
+    current_is_favorite()
+}
+
+/// 收藏壁纸自动更换配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FavSlideshow {
+    pub enabled: bool,
+    /// 间隔数量，配合 unit 使用
+    pub interval: u64,
+    /// 单位：min / hour / day
+    pub unit: String,
+    /// 上次切换的 Unix 秒（字符串，容错且便于直接查看）
+    pub last_switch: String,
+    /// 上次切换到的壁纸 enddate，用于确定下一张
+    pub last_enddate: String,
+}
+
+impl Default for FavSlideshow {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval: 30,
+            unit: "min".into(),
+            last_switch: String::new(),
+            last_enddate: String::new(),
+        }
+    }
+}
+
+pub fn fav_slideshow_path() -> PathBuf {
+    home_dir().join(".local/state/lithescape/fav-slideshow.json")
+}
+
+pub fn load_fav_slideshow() -> FavSlideshow {
+    fs::read_to_string(fav_slideshow_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_fav_slideshow(cfg: &FavSlideshow) {
+    if let Ok(s) = serde_json::to_string_pretty(cfg) {
+        let _ = atomic_write(&fav_slideshow_path(), &s);
+    }
+}
+
+/// 把「数值 + 单位」换算成秒，限制在 1 分钟 ~ 365 天之间
+pub fn fav_slideshow_secs(cfg: &FavSlideshow) -> u64 {
+    let n = cfg.interval.max(1);
+    let unit = match cfg.unit.as_str() {
+        "hour" => 3600,
+        "day" => 86400,
+        _ => 60,
+    };
+    n.saturating_mul(unit).clamp(60, 365 * 86400)
 }
 
 /// 切换收藏状态，返回切换后是否已收藏
@@ -277,5 +351,39 @@ mod tests {
         assert_eq!(all[0].meta.enddate, "20261127");
 
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn fav_slideshow_unit_conversion() {
+        let cfg = FavSlideshow::default();
+        assert_eq!(fav_slideshow_secs(&cfg), 30 * 60);
+
+        let hour = FavSlideshow {
+            interval: 2,
+            unit: "hour".into(),
+            ..Default::default()
+        };
+        assert_eq!(fav_slideshow_secs(&hour), 2 * 3600);
+
+        let day = FavSlideshow {
+            interval: 1,
+            unit: "day".into(),
+            ..Default::default()
+        };
+        assert_eq!(fav_slideshow_secs(&day), 86400);
+
+        // 未知单位按分钟处理；0 与超大值被夹到合法范围
+        let weird = FavSlideshow {
+            interval: 0,
+            unit: "???".into(),
+            ..Default::default()
+        };
+        assert_eq!(fav_slideshow_secs(&weird), 60);
+        let huge = FavSlideshow {
+            interval: 9999,
+            unit: "day".into(),
+            ..Default::default()
+        };
+        assert_eq!(fav_slideshow_secs(&huge), 365 * 86400);
     }
 }

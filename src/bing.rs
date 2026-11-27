@@ -387,6 +387,8 @@ pub fn apply(index: i32, force: bool, cfg: &Config) -> Result<String, String> {
     state.last_title = meta.title.clone();
     state.last_copyright = meta.copyright.clone();
     state.last_set_at = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+    // index 0 = 每日壁纸；翻页到历史日期则是用户选定壁纸
+    state.wallpaper_mode = if index == 0 { "daily" } else { "favorite" }.into();
     state.meta.insert(index.to_string(), meta.clone());
     save_state(&state);
 
@@ -423,6 +425,8 @@ pub fn apply_from_preview(
     state.last_title = meta.title.clone();
     state.last_copyright = meta.copyright.clone();
     state.last_set_at = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+    // 从画廊选中的壁纸属于用户选定，不再被每日壁纸自动覆盖
+    state.wallpaper_mode = "favorite".into();
     state.meta.insert(index.to_string(), meta.clone());
     save_state(&state);
 
@@ -431,6 +435,18 @@ pub fn apply_from_preview(
     } else {
         meta.copyright.clone()
     })
+}
+
+/// 应用一张收藏壁纸（收藏自动更换用）。
+/// 从历史归档里找回这张壁纸的真实序号，让托盘「图片故事 / 上一张 / 下一张」
+/// 在收藏轮播状态下依然按真实日期工作；归档已裁剪时用 0 兜底。
+pub fn apply_favorite(item: &crate::config::HistoryItem) -> Result<String, String> {
+    let index = load_history()
+        .iter()
+        .position(|h| h.meta.enddate == item.meta.enddate)
+        .map(|i| i as i32)
+        .unwrap_or(0);
+    apply_from_preview(&item.meta, &item.image_url, index, &Config::default())
 }
 
 /// 读取系统壁纸轮播配置（DBus 属性 WallpaperSlideShow，形如 {"DP-0&&1":"900"}）
