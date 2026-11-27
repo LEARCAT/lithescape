@@ -2,7 +2,7 @@
 
 一个为 **deepin V25** 编写的必应每日壁纸托盘程序。Rust 单二进制 + zbus 直连 SNI，不依赖 GTK / AppIndicator，托盘常驻，自动更换壁纸。
 
-- 当前版本：**0.2.2**
+- 当前版本：**0.2.3**
 - 适用环境：deepin V25、amd64（二进制依赖 GLIBC_2.34 及以上）
 - 许可证：[GPL-3.0-or-later](LICENSE)
 
@@ -29,12 +29,12 @@
 
 ## 安装
 
-图形方式：双击 `lithescape_0.2.2_amd64.deb`，用系统安装器安装。
+图形方式：双击 `lithescape_0.2.3_amd64.deb`，用系统安装器安装。
 
 命令行方式：
 
 ```bash
-sudo dpkg -i lithescape_0.2.2_amd64.deb
+sudo dpkg -i lithescape_0.2.3_amd64.deb
 ```
 
 装前先退出旧实例（`pkill -f lithescape`）。启动器图标若未刷新，注销重登一次。
@@ -51,7 +51,7 @@ sudo dpkg -i lithescape_0.2.2_amd64.deb
 2. 下载 deb 到 `~/.cache/lithescape/`
 3. **旧进程先退出**释放 D-Bus 单实例锁，再由独立 `--apply-update` 助手进程安装
 4. 助手依次尝试 `sudo -n`（免密静默）→ `pkexec`（弹一次系统密码框）→ `xdg-open`（交给系统安装器）。密码不经过本程序。
-5. dpkg 装完后助手**自动启动新版**；若落到系统安装器，会留一个后台等待助手轮询已安装版本，用户点完安装后新版仍会**自动启动**（最多等待 15 分钟，取消安装则静默退出）。
+5. **装完即自动启动由 deb 的 postinst 保证**：无论走 sudo / pkexec / 系统安装器，只要 dpkg 完成安装就按图形会话环境拉起新版托盘，不依赖旧托盘进程或助手代码版本（助手的等待逻辑作为补充兜底）。
 
 网络不可达或已是最新版时会给出对应提示，不会卡住托盘。
 
