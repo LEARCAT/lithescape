@@ -313,7 +313,7 @@ pub fn install(path: &PathBuf) -> (InstallOutcome, String) {
         {
             return (
                 InstallOutcome::OpenedInstaller,
-                "deb 已下载，已打开系统安装器，请在安装完成后手动启动程序".to_string(),
+                "deb 已下载，已打开系统安装器，安装完成后将自动启动轻格壁纸".to_string(),
             );
         }
     }
@@ -346,9 +346,26 @@ pub fn prepare_update(current: &str) -> (String, Option<PathBuf>) {
     }
 }
 
+/// 读取系统已安装版本，供「等安装器装完再启动」的助手判断。
+pub fn installed_version() -> Option<String> {
+    let out = Command::new("dpkg-query")
+        .args(["-W", "-f=${Version}", "lithescape"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if v.is_empty() {
+        None
+    } else {
+        Some(v)
+    }
+}
+
 /// 供 --apply-update 助手进程调用：安装已下载的 deb。
-/// 返回 (通知文案, 是否安装成功可以拉起新版)。
-pub fn apply_downloaded(path: &PathBuf) -> (String, bool) {
+/// 返回 (通知文案, 安装结果)，由调用方决定立即启动还是等待安装器。
+pub fn apply_downloaded(path: &PathBuf) -> (String, InstallOutcome) {
     let (outcome, msg) = install(path);
     let text = match outcome {
         InstallOutcome::Installed => format!("更新完成：{msg}"),
@@ -356,7 +373,7 @@ pub fn apply_downloaded(path: &PathBuf) -> (String, bool) {
             format!("{msg}，位置: {}", path.display())
         }
     };
-    (text, outcome == InstallOutcome::Installed)
+    (text, outcome)
 }
 
 #[cfg(test)]
