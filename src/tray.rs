@@ -455,12 +455,15 @@ impl DbMenu {
     ) -> zbus::Result<()>;
 }
 
-/// 软件更新：从 Gitee/GitHub Releases 探测 → 下载 deb → 安装。
+/// 软件更新：从 Gitee/GitHub Releases 探测 → 下载 deb → 安装 → 自动重启。
 /// 全程同步，调用方（dispatch_click）已放在 spawn_blocking 里，不卡托盘。
-/// 参考 LitheZones 的实现：Gitee 读版本、GitHub 取 deb 地址。
 fn check_update(_cfg: &Config) {
     let result = crate::updater::run_update(VERSION);
-    bing::notify("软件更新", &result);
+    bing::notify("软件更新", &result.message);
+    if result.restart {
+        // 通知发出后再拉起新版本；restart_app 内部退出当前进程。
+        crate::updater::restart_app();
+    }
 }
 
 /// 后台预加载壁纸元数据并定时刷新（大图在用户打开画廊时才下载）。

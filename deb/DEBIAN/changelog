@@ -1,3 +1,10 @@
+lithescape (0.1.5) unstable; urgency=medium
+
+  * 更新安装完成后自动重启程序，无需手动点启动器。
+  * 走系统安装器兜底路径时无法感知安装完成，仍提示手动重启。
+
+ -- LitheScape  Fri, 27 Nov 2026 14:10:00 +0800
+
 lithescape (0.1.4) unstable; urgency=medium
 
   * 更新下载优先使用 Gitee Release 附件，失败时回退 GitHub，提升国内可用性。

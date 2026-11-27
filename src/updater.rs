@@ -69,6 +69,13 @@ fn http_get(url: &str, timeout_secs: u64) -> Option<String> {
     String::from_utf8(out.stdout).ok()
 }
 
+/// 一次更新流程的结果：给用户的提示 + 是否需要自动重启。
+pub struct UpdateResult {
+    pub message: String,
+    /// 只有 dpkg 真正装完才为 true；系统安装器兜底路径装没装完无法感知。
+    pub restart: bool,
+}
+
 /// 上游发布信息。
 #[derive(Debug, Clone)]
 pub struct Release {
@@ -164,8 +171,8 @@ pub fn startup_hint(current: &str) -> Option<String> {
     Some(format_update_hint(&release))
 }
 
-/// 把 Release 信息拼成一条系统通知文案（供启动检查与菜单更新共用风格）。
-fn format_update_hint(release: &Release) -> String {
+/// 从 Release 说明里摘一条简短变更摘要，供通知复用。
+fn release_brief(release: &Release) -> String {
     // 优先取更新说明里的第一条变更项，避免把标题行重复念一遍。
     let lines: Vec<&str> = release
         .notes
@@ -173,7 +180,7 @@ fn format_update_hint(release: &Release) -> String {
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .collect();
-    let brief = lines
+    lines
         .iter()
         .copied()
         .find(|l| l.starts_with('-') || l.starts_with('*'))
@@ -186,7 +193,12 @@ fn format_update_hint(release: &Release) -> String {
         .unwrap_or("")
         .chars()
         .take(60)
-        .collect::<String>();
+        .collect()
+}
+
+/// 把 Release 信息拼成一条系统通知文案（供启动检查与菜单更新共用风格）。
+fn format_update_hint(release: &Release) -> String {
+    let brief = release_brief(release);
     if brief.is_empty() {
         format!(
             "发现新版本 {}。点击托盘菜单「软件更新」下载安装。",
@@ -267,8 +279,10 @@ pub fn download(release: &Release) -> Result<PathBuf, String> {
 }
 
 /// 安装 deb：依次尝试 sudo -n、pkexec、xdg-open。
-/// 返回 (是否成功, 提示文案)。
-pub fn install(path: &PathBuf) -> (bool, String) {
+/// 返回 (是否成功, 提示文案, 是否可自动重启)。
+/// 前两条路径命令同步结束，确认装完可以自动重启；xdg-open 只是把包交给
+/// 系统安装器，本进程无法知道用户什么时候点完安装，因此不自动重启。
+pub fn install(path: &PathBuf) -> (bool, String, bool) {
     let deb = path.to_string_lossy();
 
     if Command::new("sudo")
@@ -279,7 +293,11 @@ pub fn install(path: &PathBuf) -> (bool, String) {
         .map(|s| s.success())
         .unwrap_or(false)
     {
-        return (true, "已更新到新版本，重启程序后生效".to_string());
+        return (
+            true,
+            "已更新到新版本，正在自动重启".to_string(),
+            true,
+        );
     }
 
     if Command::new("pkexec")
@@ -288,7 +306,11 @@ pub fn install(path: &PathBuf) -> (bool, String) {
         .map(|s| s.success())
         .unwrap_or(false)
     {
-        return (true, "已更新到新版本，重启程序后生效".to_string());
+        return (
+            true,
+            "已更新到新版本，正在自动重启".to_string(),
+            true,
+        );
     }
 
     for opener in ["xdg-open", "deepin-deb-installer"] {
@@ -300,40 +322,63 @@ pub fn install(path: &PathBuf) -> (bool, String) {
         {
             return (
                 true,
-                "deb 已下载，已打开系统安装器，请手动完成安装".to_string(),
+                "deb 已下载，已打开系统安装器，请在安装完成后手动重启程序".to_string(),
+                false,
             );
         }
     }
 
-    (false, "更新包已下载，但无法自动安装，请手动安装".to_string())
+    (
+        false,
+        "更新包已下载，但无法自动安装，请手动安装".to_string(),
+        false,
+    )
+}
+
+/// 更新装完后自动重启：先让旧进程退出释放单实例锁，再拉起新版本。
+/// 用独立会话启动，避免随本进程退出而被带走；调用方不要再执行后续逻辑。
+pub fn restart_app() -> ! {
+    // 等 1 秒给当前进程退出、DBus 名称释放的时间；
+    // setsid 保证新进程脱离当前终端会话，nohup 作为兜底。
+    let script = "sleep 1; if command -v setsid >/dev/null 2>&1; then setsid /usr/bin/lithescape >/dev/null 2>&1; else nohup /usr/bin/lithescape >/dev/null 2>&1 & fi";
+    let _ = Command::new("sh").arg("-c").arg(script).spawn();
+    // 给通知守护进程一点时间把「正在重启」这条通知发出去。
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    std::process::exit(0);
 }
 
 /// 供菜单点击调用：检查 → 下载 → 安装，全程同步（调用方应放 spawn_blocking）。
-pub fn run_update(current: &str) -> String {
+pub fn run_update(current: &str) -> UpdateResult {
+    let no_restart = |message: String| UpdateResult {
+        message,
+        restart: false,
+    };
+
     let release = match check(current) {
         Some(r) => r,
-        None => return "当前已是最新版本，或暂时无法连接更新服务器".to_string(),
+        None => {
+            return no_restart("当前已是最新版本，或暂时无法连接更新服务器".to_string())
+        }
     };
     let path = match download(&release) {
         Ok(p) => p,
-        Err(e) => return format!("下载更新失败：{e}"),
+        Err(e) => return no_restart(format!("下载更新失败：{e}")),
     };
-    let (ok, msg) = install(&path);
+    let (ok, msg, auto_restart) = install(&path);
     if !ok {
-        return format!("{msg}，位置: {}", path.display());
+        return no_restart(format!("{msg}，位置: {}", path.display()));
     }
-    let brief = release
-        .notes
-        .lines()
-        .find(|l| !l.trim().is_empty())
-        .unwrap_or("")
-        .chars()
-        .take(60)
-        .collect::<String>();
-    if brief.is_empty() {
-        format!("发现新版本 {}：{}", release.version, msg)
-    } else {
-        format!("发现新版本 {}（{}）：{}", release.version, brief, msg)
+    let message = {
+        let brief = release_brief(&release);
+        if brief.is_empty() {
+            format!("发现新版本 {}：{}", release.version, msg)
+        } else {
+            format!("发现新版本 {}（{}）：{}", release.version, brief, msg)
+        }
+    };
+    UpdateResult {
+        message,
+        restart: auto_restart,
     }
 }
 
