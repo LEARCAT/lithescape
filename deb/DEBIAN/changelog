@@ -1,3 +1,10 @@
+lithescape (0.2.6) unstable; urgency=medium
+
+  * 软件更新通知改为只发头尾两条：点击立即提示"正在检查更新"，
+    下载过程静默，完成后一条结果通知。规避 deepin 通知中心逐条堆叠的问题。
+
+ -- LitheScape  Sat, 28 Nov 2026 00:25:00 +0800
+
 lithescape (0.2.5) unstable; urgency=medium
 
   * 更新安装成功后自动清理本次下载的 deb 缓存，不再堆积旧安装包。
