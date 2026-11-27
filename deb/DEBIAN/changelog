@@ -1,1 +1,68 @@
-bGl0aGVzY2FwZSAoMC4xLjcpIHVuc3RhYmxlOyB1cmdlbmN5PW1lZGl1bQoKICAqIOWQr+WKqOWQjuiHquWKqOWIh+aNouS4uuW/heW6lOavj+aXpeWjgee6uO+8iOWQjuWPsOaJp+ihjO+8jOS7heWksei0peaXtuaPkOekuu+8ieOAggogICog5omY55uY6I+c5Y2V5paw5aKe44CM5aOB57q45pS26JeP44CN77yb55S75buK5pSv5oyB44CM5YWo6YOo5aOB57q4IC8g5oiR55qE5pS26JeP44CN5qCH562+5LiO5LiA6ZSu5pS26JeP44CB5Y+W5raI5pS26JeP44CCCiAgKiDmlLbol4/ni6znq4vlrZjkuo4gZmF2b3JpdGVzLmpzb27vvIzmjInml6XmnJ/ljrvph43jgIHkuI3lj5cgMzY1IOWkqeWOhuWPsuijgeWJquW9seWTjeOAggoKIC0tIExpdGhlU2NhcGUgIEZyaSwgMjcgTm92IDIwMjYgMTg6MTA6MDAgKzA4MDAKCmxpdGhlc2NhcGUgKDAuMS42KSB1bnN0YWJsZTsgdXJnZW5jeT1tZWRpdW0KCiAgKiDlo4Hnurjpu5jorqTkvJjlhYggNEsvVUhE77yIMzg0MHgyMTYw77yJ77yM5LiL6L295aSx6LSl6Ieq5Yqo5Zue6YCA5L2O5YiG6L6o546H77yb5pen5b2S5qGj6ZO+5o6l5Lmf5Lya5Y2H57qn44CCCiAgKiDmm7TmlrDmlLnkuLrml6fniYjlhYjpgIDlh7rph4rmlL4gRC1CdXMg5ZCN56ew77yM5YaN55Sx54us56uL5Yqp5omL5a6J6KOF5bm25ZCv5Yqo5paw54mI77yM5LiOIExpdGhlWm9uZXMg5a+56b2Q44CCCiAgKiDmm7TmlrDmupDmlLnkuLogR2l0ZWUg5Li744CBR2l0SHViIOWFnOW6le+8jOWcsOWdgOe8uuWkseaXtuaLvCBHaXRlZSDmoIflh4bkuIvovb3ot6/lvoTjgIIKICAqIOaWsOWiniAtLWNoZWNrLXVwZGF0ZSDor4rmlq3lj4LmlbDvvIzlj6/lnKjnu4jnq6/pqozor4HjgIzmnInmlrDniYjmj5DnpLrjgIHml6DmlrDniYjpnZnpu5jjgI3jgIIKCiAtLSBMaXRoZVNjYXBlICBGcmksIDI3IE5vdiAyMDI2IDE0OjIwOjAwICswODAwCgpsaXRoZXNjYXBlICgwLjEuNSkgdW5zdGFibGU7IHVyZ2VuY3k9bWVkaXVtCgogICog5pu05paw5a6J6KOF5a6M5oiQ5ZCO6Ieq5Yqo6YeN5ZCv56iL5bqP77yM5peg6ZyA5omL5Yqo54K55ZCv5Yqo5Zmo44CCCiAgKiDotbDns7vnu5/lronoo4XlmajlhZzlupXot6/lvoTml7bml6Dms5XmhJ/nn6Xlronoo4XlrozmiJDvvIzku43mj5DnpLrmiYvliqjph43lkK/jgIIKCiAtLSBMaXRoZVNjYXBlICBGcmksIDI3IE5vdiAyMDI2IDE0OjEwOjAwICswODAwCgpsaXRoZXNjYXBlICgwLjEuNCkgdW5zdGFibGU7IHVyZ2VuY3k9bWVkaXVtCgogICog5pu05paw5LiL6L295LyY5YWI5L2/55SoIEdpdGVlIFJlbGVhc2Ug6ZmE5Lu277yM5aSx6LSl5pe25Zue6YCAIEdpdEh1Yu+8jOaPkOWNh+WbveWGheWPr+eUqOaAp+OAggogICog5L+u5q2j5pu05paw5o+Q56S65paH5qGI5pyr5bC+6YeN5aSN5qCH54K555qE6Zeu6aKY44CCCgogLS0gTGl0aGVTY2FwZSAgRnJpLCAyNyBOb3YgMjAyNiAxMzo1MDowMCArMDgwMAoKbGl0aGVzY2FwZSAoMC4xLjMpIHVuc3RhYmxlOyB1cmdlbmN5PW1lZGl1bQoKICAqIOWQr+WKqOaXtumdmem7mOajgOafpeS4gOasoeabtOaWsO+8muS7heW9k+WPkeeOsOaWsOeJiOacrOaJjeW8ueWHuuezu+e7n+mAmuefpe+8jOW3suaYr+acgOaWsOaIlue9kee7nOS4jeWPr+i+vuaXtuS4jeaJk+aJsOOAggogICog5pu05paw5o+Q56S65Y+q5o+Q56S644CB5LiN6Ieq5Yqo5a6J6KOF77yM54K55Ye75omY55uY6I+c5Y2V44CM6L2v5Lu25pu05paw44CN5omn6KGM5LiL6L295LiO5a6J6KOF44CCCgogLS0gTGl0aGVTY2FwZSAgRnJpLCAyNyBOb3YgMjAyNiAxMzo0MDowMCArMDgwMAoKbGl0aGVzY2FwZSAoMC4xLjIpIHVuc3RhYmxlOyB1cmdlbmN5PW1lZGl1bQoKICAqIOeUu+W7iuOAjOiuvuS4uuWjgee6uOOAjee7k+aenOaUueS4uuahjOmdoumAmuefpe+8iOiHquWKqOa2iOWkse+8ie+8jOenu+mZpOa1j+iniOWZqCBhbGVydCDlvLnnqpfjgIIKICAqIOWQr+WKqOWZqOWbvuagh+aUueWbnuijuOWbvuagh+WQje+8jOa2iOmZpOW8gOacuuiHquWQr+S7peWklueahOinkuagh+ivr+WIpOOAggogICog54mI5pys5Y+35pS55Li65Y2V5LiA5p2l5rqQIENhcmdvLnRvbWzvvIzmiZPljIXohJrmnKzoh6rliqjlkIzmraUgY29udHJvbOOAggoKIC0tIExpdGhlU2NhcGUgIEZyaSwgMjcgTm92IDIwMjYgMTI6NTY6MDAgKzA4MDAKCmxpdGhlc2NhcGUgKDAuMS4xKSB1bnN0YWJsZTsgdXJnZW5jeT1tZWRpdW0KCiAgKiDmlrDlop7mnKzlnLDljoblj7LlvZLmoaPvvIzlo4HnurjpooTop4jnqoHnoLTlv4XlupQgOCDlpKnpmZDliLbvvIjnlKjlvpfotorkuYXljoblj7Lotorplb/vvInjgIIKICAqIOS/ruWkjeeUu+W7iuWIh+aNouWbvueJh+aXtuWkp+WbvuS4jeabtOaWsOeahOmXrumimOOAggogICog5omY55uY5p625p6E6YeN5p6E77yaREJ1cyDlm57osIPlj6rmipXpgJLkuovku7bvvIzkuJrliqHpgLvovpHlvILmraXlpITnkIbvvIzkuI3lho3mi5bntK/mlbTkuKrmiZjnm5jjgIIKICAqIOenu+mZpOOAjOavj+aXpea1i+mqjOOAje+8jOWQr+WKqOWZqOabtOWQjeS4uuOAjOi9u+agvOWjgee6uOOAjeOAggoKIC0tIExpdGhlU2NhcGUgIEZyaSwgMjcgTm92IDIwMjYgMTI6NDA6MDAgKzA4MDAKCmxpdGhlc2NhcGUgKDAuMS4wKSB1bnN0YWJsZTsgdXJnZW5jeT1oaWdoCgogICog6aaW5Liq54mI5pys77ya5b+F5bqU5q+P5pel5aOB57q46Ieq5Yqo5pu05o2i44CBU05JIOaJmOebmOiPnOWNleOAgeWkp+WbvueUu+W7iuOAgQogICAg5YiG6L6o546H6Ieq6YCC5bqU44CB5byA5py66Ieq5ZCv44CB6L2v5Lu25pu05paw5qOA5p+l44CCCgogLS0gTGl0aGVTY2FwZSAgRnJpLCAyNyBOb3YgMjAyNiAxMTo1ODowMCArMDgwMAo=
+lithescape (0.1.8) unstable; urgency=medium
+
+  * 左键点击托盘图标直接进入壁纸预览页面（中键仍打开图片故事）。
+  * 点击统一走主循环异步派发，不在 DBus 回调里启动浏览器，避免拖累托盘。
+
+ -- LitheScape  Fri, 27 Nov 2026 18:22:00 +0800
+
+lithescape (0.1.7) unstable; urgency=medium
+
+  * 启动后自动切换为必应每日壁纸（后台执行，仅失败时提示）。
+  * 托盘菜单新增「壁纸收藏」；画廊支持「全部壁纸 / 我的收藏」标签与一键收藏、取消收藏。
+  * 收藏独立存于 favorites.json，按日期去重、不受 365 天历史裁剪影响。
+
+ -- LitheScape  Fri, 27 Nov 2026 18:10:00 +0800
+
+lithescape (0.1.6) unstable; urgency=medium
+
+  * 壁纸默认优先 4K/UHD（3840x2160），下载失败自动回退低分辨率；旧归档链接也会升级。
+  * 更新改为旧版先退出释放 D-Bus 名称，再由独立助手安装并启动新版，与 LitheZones 对齐。
+  * 更新源改为 Gitee 主、GitHub 兜底，地址缺失时拼 Gitee 标准下载路径。
+  * 新增 --check-update 诊断参数，可在终端验证「有新版提示、无新版静默」。
+
+ -- LitheScape  Fri, 27 Nov 2026 14:20:00 +0800
+
+lithescape (0.1.5) unstable; urgency=medium
+
+  * 更新安装完成后自动重启程序，无需手动点启动器。
+  * 走系统安装器兜底路径时无法感知安装完成，仍提示手动重启。
+
+ -- LitheScape  Fri, 27 Nov 2026 14:10:00 +0800
+
+lithescape (0.1.4) unstable; urgency=medium
+
+  * 更新下载优先使用 Gitee Release 附件，失败时回退 GitHub，提升国内可用性。
+  * 修正更新提示文案末尾重复标点的问题。
+
+ -- LitheScape  Fri, 27 Nov 2026 13:50:00 +0800
+
+lithescape (0.1.3) unstable; urgency=medium
+
+  * 启动时静默检查一次更新：仅当发现新版本才弹出系统通知，已是最新或网络不可达时不打扰。
+  * 更新提示只提示、不自动安装，点击托盘菜单「软件更新」执行下载与安装。
+
+ -- LitheScape  Fri, 27 Nov 2026 13:40:00 +0800
+
+lithescape (0.1.2) unstable; urgency=medium
+
+  * 画廊「设为壁纸」结果改为桌面通知（自动消失），移除浏览器 alert 弹窗。
+  * 启动器图标改回裸图标名，消除开机自启以外的角标误判。
+  * 版本号改为单一来源 Cargo.toml，打包脚本自动同步 control。
+
+ -- LitheScape  Fri, 27 Nov 2026 12:56:00 +0800
+
+lithescape (0.1.1) unstable; urgency=medium
+
+  * 新增本地历史归档，壁纸预览突破必应 8 天限制（用得越久历史越长）。
+  * 修复画廊切换图片时大图不更新的问题。
+  * 托盘架构重构：DBus 回调只投递事件，业务逻辑异步处理，不再拖累整个托盘。
+  * 移除「每日测验」，启动器更名为「轻格壁纸」。
+
+ -- LitheScape  Fri, 27 Nov 2026 12:40:00 +0800
+
+lithescape (0.1.0) unstable; urgency=high
+
+  * 首个版本：必应每日壁纸自动更换、SNI 托盘菜单、大图画廊、
+    分辨率自适应、开机自启、软件更新检查。
+
+ -- LitheScape  Fri, 27 Nov 2026 11:58:00 +0800

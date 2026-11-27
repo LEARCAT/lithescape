@@ -1,1 +1,10 @@
-UGFja2FnZTogbGl0aGVzY2FwZQpWZXJzaW9uOiAwLjEuNwpTZWN0aW9uOiB1dGlscwpQcmlvcml0eTogb3B0aW9uYWwKQXJjaGl0ZWN0dXJlOiBhbWQ2NApEZXBlbmRzOiBsaWJjNiAoPj0gMi4zNCkKTWFpbnRhaW5lcjogTGl0aGVTY2FwZQpEZXNjcmlwdGlvbjog6L275qC85aOB57q4IC0gZGVlcGluIOS4i+eahOW/heW6lOavj+aXpeWjgee6uOaJmOebmOeoi+W6jwog6Ieq5Yqo6I635Y+W5bm26K6+572u5b+F5bqU5q+P5pel5aOB57q477yM5omY55uY5LiA6ZSu5pu05o2i77yM5pSv5oyB5pys5Zyw5b2S5qGj55qE5aOB57q45Y6G5Y+y6aKE6KeI44CBCiDlpKflm77nlLvlu4rjgIHmjInlsY/luZXliIbovqjnjofpgInlm77jgIHlvIDmnLroh6rlkK/kuI7ova/ku7bmm7TmlrDmo4Dmn6XjgIIK
+Package: lithescape
+Version: 0.1.8
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: libc6 (>= 2.34)
+Maintainer: LitheScape
+Description: 轻格壁纸 - deepin 下的必应每日壁纸托盘程序
+ 自动获取并设置必应每日壁纸，托盘一键更换，支持本地归档的壁纸历史预览、
+ 大图画廊、按屏幕分辨率选图、开机自启与软件更新检查。
