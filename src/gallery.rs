@@ -141,6 +141,56 @@ fn handle(stream: &mut TcpStream, shared: &Shared) {
             "application/json; charset=utf-8",
             json.as_bytes(),
         );
+    } else if path == "/favcfg" {
+        // 读取收藏自动更换设置
+        let c = crate::config::load_fav_slideshow();
+        let json = serde_json::json!({
+            "enabled": c.enabled,
+            "interval": c.interval,
+            "unit": c.unit,
+        })
+        .to_string();
+        respond(
+            stream,
+            200,
+            "application/json; charset=utf-8",
+            json.as_bytes(),
+        );
+    } else if path == "/favcfg/set" {
+        // 保存收藏自动更换设置；首次开启时立即切到一张收藏壁纸，
+        // 让程序进入「收藏壁纸」状态，之后轮播线程才会接管。
+        let mut c = crate::config::load_fav_slideshow();
+        let was_enabled = c.enabled;
+        if let Some(v) = query_param(&query, "enabled") {
+            c.enabled = v == "1" || v.eq_ignore_ascii_case("true");
+        }
+        if let Some(v) = query_param(&query, "interval") {
+            if let Ok(n) = v.parse::<u64>() {
+                c.interval = n;
+            }
+        }
+        if let Some(v) = query_param(&query, "unit") {
+            if matches!(v.as_str(), "min" | "hour" | "day") {
+                c.unit = v;
+            }
+        }
+        crate::config::save_fav_slideshow(&c);
+        if c.enabled && !was_enabled {
+            crate::tray::start_favorite_rotation();
+        }
+        let json = serde_json::json!({
+            "ok": true,
+            "enabled": c.enabled,
+            "interval": c.interval,
+            "unit": c.unit,
+        })
+        .to_string();
+        respond(
+            stream,
+            200,
+            "application/json; charset=utf-8",
+            json.as_bytes(),
+        );
     } else if path == "/favicon.ico" || path == "/favicon.png" {
         // 网页标签图标用软件自身图标（内嵌 32x32 PNG，不依赖安装路径）
         const FAVICON: &[u8] =
@@ -185,6 +235,18 @@ fn toggle_favorite(shared: &Shared, idx: i32) -> (bool, bool) {
     };
     let fav = crate::config::toggle_favorite(hist);
     (true, fav)
+}
+
+/// 取查询串参数（值均为简单 ASCII，无需 URL 解码）
+fn query_param(query: &str, key: &str) -> Option<String> {
+    query.split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=')?;
+        if k == key {
+            Some(v.to_string())
+        } else {
+            None
+        }
+    })
 }
 
 fn respond(stream: &mut TcpStream, status: u16, content_type: &str, body: &[u8]) {
@@ -278,6 +340,10 @@ body{{font-family:"Noto Sans CJK SC","Microsoft YaHei",sans-serif;background:#11
 .tab.on{{background:#107c9e;border-color:#107c9e;color:#fff}}
 .btn.fav-on{{color:#ffd166;border-color:#8a6d2f;background:#3a321f}}
 .btn.fav-on:hover{{background:#4a4028}}
+#favcfg{{display:none;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:9px;padding:8px 11px;background:#23272e;border:1px solid #343a43;border-radius:6px;font-size:13px}}
+#favcfg input[type=number]{{width:62px;padding:5px 7px;border-radius:5px;border:1px solid #454950;background:#1b1e24;color:#e8eaed}}
+#favcfg select{{padding:5px 7px;border-radius:5px;border:1px solid #454950;background:#1b1e24;color:#e8eaed}}
+#fovmsg{{color:#9aa0a8;min-width:52px}}
 @media(max-width:760px){{#date{{display:none}}.btn{{padding:6px 10px;font-size:12px}}.thumb{{width:84px;height:48px}}}}
 </style>
 </head>
@@ -292,6 +358,12 @@ body{{font-family:"Noto Sans CJK SC","Microsoft YaHei",sans-serif;background:#11
   <div id="tabs">
     <button class="tab" id="tab-all">全部壁纸</button>
     <button class="tab" id="tab-fav">我的收藏</button>
+  </div>
+  <div id="favcfg">
+    <label><input type="checkbox" id="foven"> 自动更换收藏壁纸</label>
+    <span>每</span><input type="number" id="fovnum" min="1" max="365" value="30">
+    <select id="fovunit"><option value="min">分钟</option><option value="hour">小时</option><option value="day">天</option></select>
+    <button class="btn" id="fovsave">保存</button><span id="fovmsg"></span>
   </div>
   <div id="info">
     <div id="title">加载中…</div>
@@ -309,6 +381,24 @@ let cur = DATA.length ? DATA.length - 1 : 0;
 let view = '{start_tab}';
 const $ = id => document.getElementById(id);
 const photo = $('photo');
+
+// 收藏自动更换设置（只在「我的收藏」标签下显示）
+fetch('/favcfg').then(r=>r.json()).then(c=>{{
+  $('foven').checked = !!c.enabled;
+  $('fovnum').value = c.interval;
+  $('fovunit').value = c.unit;
+}}).catch(()=>{{}});
+$('fovsave').onclick = async () => {{
+  const n = Math.max(1, Math.min(365, parseInt($('fovnum').value, 10) || 30));
+  const q = '?enabled=' + ($('foven').checked ? 1 : 0)
+          + '&interval=' + n + '&unit=' + encodeURIComponent($('fovunit').value);
+  try {{
+    const r = await fetch('/favcfg/set' + q);
+    const j = await r.json();
+    $('fovmsg').textContent = j.ok ? '已保存' : '保存失败';
+  }} catch (e) {{ $('fovmsg').textContent = '保存失败'; }}
+  setTimeout(() => {{ $('fovmsg').textContent = ''; }}, 2000);
+}};
 
 // 当前标签下可见的壁纸：全部 或 只看已收藏
 function visible() {{
@@ -333,6 +423,7 @@ function loadMain() {{
 
 function render() {{
   const list = visible();
+  $('favcfg').style.display = view === 'fav' ? 'flex' : 'none';
   $('tab-all').classList.toggle('on', view === 'all');
   $('tab-fav').classList.toggle('on', view === 'fav');
   if (!DATA.length) {{
@@ -489,6 +580,46 @@ mod tests {
         let html = page_html(&shared(), false);
         assert!(html.contains("/favicon.png"));
         assert!(html.contains("rel=\"icon\""));
+    }
+
+    #[test]
+    fn page_has_favorite_slideshow_settings() {
+        let html = page_html(&shared(), true);
+        assert!(html.contains("id=\"favcfg\""));
+        assert!(html.contains("id=\"foven\""));
+        assert!(html.contains("id=\"fovnum\""));
+        assert!(html.contains("id=\"fovunit\""));
+        assert!(html.contains("value=\"min\""));
+        assert!(html.contains("value=\"hour\""));
+        assert!(html.contains("value=\"day\""));
+        assert!(html.contains("fetch('/favcfg')"));
+        assert!(html.contains("fetch('/favcfg/set'"));
+    }
+
+    #[test]
+    fn favcfg_route_returns_settings_json() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let mut client = std::net::TcpStream::connect(addr).unwrap();
+        let (mut server, _) = listener.accept().unwrap();
+        let worker = std::thread::spawn(move || handle(&mut server, &shared()));
+        client
+            .write_all(b"GET /favcfg HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .unwrap();
+        let mut resp = String::new();
+        client.read_to_string(&mut resp).unwrap();
+        worker.join().unwrap();
+        assert!(resp.contains("HTTP/1.1 200 OK"));
+        assert!(resp.contains("\"enabled\""));
+        assert!(resp.contains("\"interval\""));
+        assert!(resp.contains("\"unit\""));
+    }
+
+    #[test]
+    fn query_param_parses_simple_values() {
+        assert_eq!(query_param("enabled=1&interval=45&unit=hour", "unit"), Some("hour".into()));
+        assert_eq!(query_param("enabled=1&interval=45", "missing"), None);
     }
 
     #[test]

@@ -3,7 +3,10 @@
 //! 直接使用 zbus 实现标准协议，不依赖 GTK / AppIndicator。
 //! deepin V25 的 dock 同时支持 SNI，图标会在托盘区显示。
 
-use crate::config::{autostart_enabled, load_state, set_autostart, Config, MetaInfo, State};
+use crate::config::{
+    autostart_enabled, fav_slideshow_secs, is_favorite_mode, load_fav_slideshow, load_favorites,
+    load_state, save_fav_slideshow, set_autostart, Config, MetaInfo, State,
+};
 use crate::{bing, VERSION};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -23,6 +26,7 @@ const ID_UPDATE: i32 = 8;
 const ID_QUIT: i32 = 9;
 const ID_PREVIEW: i32 = 10; // 壁纸预览
 const ID_FAVORITES: i32 = 11; // 壁纸收藏
+const ID_FAV_LOOP: i32 = 12; // 收藏自动更换
 const SEP_1: i32 = 101;
 const SEP_2: i32 = 102;
 const SEP_3: i32 = 103;
@@ -150,6 +154,7 @@ fn menu_layout() -> (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) {
     let state: State = load_state();
     let idx = state.current_index;
     let autostart = autostart_enabled();
+    let fav_loop = load_fav_slideshow().enabled;
     // 翻页边界由本地归档实际天数决定（Bing 只给 8 天，归档会随时间增长）
     let total = crate::config::load_history().len() as i32;
     let max_idx = (total - 1).max(0);
@@ -164,6 +169,7 @@ fn menu_layout() -> (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) {
         separator(SEP_1),
         menu_item(ID_PREVIEW, "壁纸预览", true, None),
         menu_item(ID_FAVORITES, "壁纸收藏", true, None),
+        menu_item(ID_FAV_LOOP, "收藏自动更换", true, Some(fav_loop)),
         separator(SEP_4),
         menu_item(ID_STORY, "图片故事", true, None),
         separator(SEP_2),
@@ -381,6 +387,34 @@ pub fn dispatch_click(shared: &Shared, id: i32) {
                 bing::open_url(&meta.copyrightlink);
             }
         }
+        ID_FAV_LOOP => {
+            let mut fav_cfg = load_fav_slideshow();
+            let enabling = !fav_cfg.enabled;
+            fav_cfg.enabled = enabling;
+            // 开启时清空计时，让轮播线程在数秒内先切到一张收藏壁纸
+            if enabling {
+                fav_cfg.last_switch.clear();
+            }
+            save_fav_slideshow(&fav_cfg);
+            if enabling && load_favorites().is_empty() {
+                bing::notify(
+                    "收藏自动更换",
+                    "已开启，但还没有收藏壁纸；请先在「壁纸收藏」中添加",
+                );
+            } else {
+                if enabling {
+                    start_favorite_rotation();
+                }
+                bing::notify(
+                    "收藏自动更换",
+                    if enabling {
+                        "已开启，将按设定间隔更换收藏壁纸"
+                    } else {
+                        "已关闭"
+                    },
+                );
+            }
+        }
         ID_AUTO => {
             let current = autostart_enabled();
             if !set_autostart(!current) {
@@ -509,13 +543,20 @@ pub fn spawn_preview_loader(shared: Shared) {
     });
 }
 
-/// 启动时执行一次：立即把壁纸切换为必应每日壁纸（index 0）。
+/// 启动时执行一次：把壁纸切换为必应每日壁纸（index 0）。
+/// 但用户当前用的是收藏壁纸、或已开启收藏自动更换时，绝不覆盖用户的选择。
 /// 放在独立线程，不阻塞托盘注册；用 busy 锁避免与用户点击/定时器冲突。
 /// 成功不弹通知（静默完成），失败才提示用户。
 pub fn spawn_startup_apply(shared: Shared) {
     std::thread::spawn(move || {
         // 让预览加载器先把元数据/历史归档建好，启动换壁纸随后进行
         std::thread::sleep(std::time::Duration::from_secs(1));
+        if is_favorite_mode() {
+            eprintln!("[info] 当前为用户选定 / 收藏壁纸，启动不切换每日壁纸");
+            return;
+        }
+        // 当前是每日壁纸（或首次运行）：自动切到当日壁纸。
+        // 收藏轮播线程只在当前为收藏壁纸时才动作，不会覆盖这里。
         if !shared.begin_busy() {
             return;
         }
@@ -524,6 +565,90 @@ pub fn spawn_startup_apply(shared: Shared) {
         match bing::apply(0, false, &cfg) {
             Ok(_) => eprintln!("[info] 启动已切换为每日壁纸"),
             Err(e) => bing::notify("轻格壁纸", &format!("启动时设置壁纸失败：{e}")),
+        }
+    });
+}
+
+/// 开启收藏自动更换时立即切到一张收藏壁纸。
+/// 必须先进入「收藏壁纸」状态，轮播线程才会接管；否则用户当前还是每日壁纸，
+/// 轮播线程按设计不动作，开启后要等到用户手动收藏一张才生效。
+pub fn start_favorite_rotation() {
+    let favorites = load_favorites();
+    if favorites.is_empty() {
+        return;
+    }
+    let mut fav_cfg = load_fav_slideshow();
+    let pos = favorites
+        .iter()
+        .position(|h| h.meta.enddate == fav_cfg.last_enddate)
+        .map(|p| (p + 1) % favorites.len())
+        .unwrap_or(0);
+    let target = favorites[pos].clone();
+    match bing::apply_favorite(&target) {
+        Ok(_) => {
+            fav_cfg.last_switch = chrono::Local::now().timestamp().to_string();
+            fav_cfg.last_enddate = target.meta.enddate.clone();
+        }
+        Err(e) => {
+            // 失败时清空计时，下一轮尽快重试
+            fav_cfg.last_switch.clear();
+            bing::notify("收藏轮播失败", &e);
+        }
+    }
+    save_fav_slideshow(&fav_cfg);
+}
+
+/// 收藏壁纸自动更换：按用户设定的「数值 + 分钟/小时/天」间隔轮换已收藏壁纸。
+/// 每 5 秒检查一次到期情况，避免开启后还要等一整个周期才生效。
+pub fn spawn_favorite_rotation(shared: Shared) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(5));
+        let mut fav_cfg = load_fav_slideshow();
+        if !fav_cfg.enabled {
+            continue;
+        }
+        // 只在「当前是收藏壁纸」时轮换；用户选用每日壁纸时保持当日壁纸，
+        // 不会被收藏轮播覆盖（对应：每日壁纸 = 自动使用当日壁纸）。
+        if !is_favorite_mode() {
+            continue;
+        }
+        let favorites = load_favorites();
+        if favorites.is_empty() {
+            continue;
+        }
+        let now = chrono::Local::now().timestamp();
+        let last = fav_cfg.last_switch.parse::<i64>().unwrap_or(0);
+        // 从未切换过（刚开启）立即执行；否则按到期时间判断
+        if last > 0 && now.saturating_sub(last) < fav_slideshow_secs(&fav_cfg) as i64 {
+            continue;
+        }
+        if !shared.begin_busy() {
+            continue;
+        }
+        let _guard = shared.busy_guard();
+
+        let pos = if fav_cfg.last_enddate.is_empty() {
+            0
+        } else {
+            favorites
+                .iter()
+                .position(|h| h.meta.enddate == fav_cfg.last_enddate)
+                .map(|p| (p + 1) % favorites.len())
+                .unwrap_or(0)
+        };
+        let target = favorites[pos].clone();
+        // 无论成功失败都记录本次尝试，避免失败时每 5 秒反复重试、刷屏通知
+        fav_cfg.last_switch = now.to_string();
+        match bing::apply_favorite(&target) {
+            Ok(msg) => {
+                fav_cfg.last_enddate = target.meta.enddate.clone();
+                save_fav_slideshow(&fav_cfg);
+                eprintln!("[info] 收藏轮播已切换：{msg}");
+            }
+            Err(e) => {
+                save_fav_slideshow(&fav_cfg);
+                bing::notify("收藏轮播失败", &e);
+            }
         }
     });
 }
@@ -548,8 +673,9 @@ pub fn spawn_periodic(shared: Shared) {
                 continue;
             }
             let state: State = load_state();
-            // 只有停留在"今天"时才自动跟随新的一天
-            if state.current_index != 0 {
+            // 用户正在用收藏壁纸时不跟随每日更新；只有停留在"今天"
+            // 且不是收藏壁纸时，才自动跟随新的一天
+            if state.current_index != 0 || is_favorite_mode() {
                 continue;
             }
             if !shared.begin_busy() {
