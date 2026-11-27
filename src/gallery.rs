@@ -340,10 +340,13 @@ body{{font-family:"Noto Sans CJK SC","Microsoft YaHei",sans-serif;background:#11
 .tab.on{{background:#107c9e;border-color:#107c9e;color:#fff}}
 .btn.fav-on{{color:#ffd166;border-color:#8a6d2f;background:#3a321f}}
 .btn.fav-on:hover{{background:#4a4028}}
-#favcfg{{display:none;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:9px;padding:8px 11px;background:#23272e;border:1px solid #343a43;border-radius:6px;font-size:13px}}
-#favcfg input[type=number]{{width:62px;padding:5px 7px;border-radius:5px;border:1px solid #454950;background:#1b1e24;color:#e8eaed}}
-#favcfg select{{padding:5px 7px;border-radius:5px;border:1px solid #454950;background:#1b1e24;color:#e8eaed}}
-#fovmsg{{color:#9aa0a8;min-width:52px}}
+#favcfg{{display:none;align-items:center;gap:7px;white-space:nowrap}}
+#fovtoggle{{display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none;color:#c8ccd2}}
+#fovtoggle input{{width:15px;height:15px;accent-color:#107c9e;cursor:pointer;margin:0}}
+#fovmore{{display:none;align-items:center;gap:6px}}
+#fovnum{{width:54px;padding:5px 6px;border-radius:5px;border:1px solid #454950;background:#1b1e24;color:#e8eaed;font-size:12px}}
+#fovunit{{padding:5px 6px;border-radius:5px;border:1px solid #454950;background:#1b1e24;color:#e8eaed;font-size:12px}}
+#fovsave{{padding:6px 11px;font-size:12px}}
 @media(max-width:760px){{#date{{display:none}}.btn{{padding:6px 10px;font-size:12px}}.thumb{{width:84px;height:48px}}}}
 </style>
 </head>
@@ -359,15 +362,13 @@ body{{font-family:"Noto Sans CJK SC","Microsoft YaHei",sans-serif;background:#11
     <button class="tab" id="tab-all">全部壁纸</button>
     <button class="tab" id="tab-fav">我的收藏</button>
   </div>
-  <div id="favcfg">
-    <label><input type="checkbox" id="foven"> 自动更换收藏壁纸</label>
-    <span>每</span><input type="number" id="fovnum" min="1" max="365" value="30">
-    <select id="fovunit"><option value="min">分钟</option><option value="hour">小时</option><option value="day">天</option></select>
-    <button class="btn" id="fovsave">保存</button><span id="fovmsg"></span>
-  </div>
   <div id="info">
     <div id="title">加载中…</div>
     <div id="date"></div>
+    <div id="favcfg">
+      <label id="fovtoggle"><input type="checkbox" id="foven"> 自动更换</label>
+      <span id="fovmore">每 <input type="number" id="fovnum" min="1" max="365" value="30"><select id="fovunit"><option value="min">分钟</option><option value="hour">小时</option><option value="day">天</option></select><button class="btn" id="fovsave">保存</button></span>
+    </div>
     <button class="btn" id="favbtn" title="收藏 / 取消收藏">☆ 收藏</button>
     <button class="btn" id="story" title="查看图片故事">图片故事</button>
     <button class="btn main" id="setbtn">设为壁纸</button>
@@ -382,23 +383,34 @@ let view = '{start_tab}';
 const $ = id => document.getElementById(id);
 const photo = $('photo');
 
-// 收藏自动更换设置（只在「我的收藏」标签下显示）
+// 收藏自动更换：默认只显示「自动更换」开关，开启后在同一行展开时间设置
+function updateFovMore() {{
+  $('fovmore').style.display = $('foven').checked ? 'inline-flex' : 'none';
+}}
+async function saveFovCfg(feedback) {{
+  const n = Math.max(1, Math.min(365, parseInt($('fovnum').value, 10) || 30));
+  const q = '?enabled=' + ($('foven').checked ? 1 : 0)
+          + '&interval=' + n + '&unit=' + encodeURIComponent($('fovunit').value);
+  let ok = false;
+  try {{
+    const r = await fetch('/favcfg/set' + q);
+    const j = await r.json();
+    ok = !!j.ok;
+  }} catch (e) {{}}
+  if (feedback) {{
+    const b = $('fovsave');
+    b.textContent = ok ? '✓' : '!';
+    setTimeout(() => {{ b.textContent = '保存'; }}, 1200);
+  }}
+}}
 fetch('/favcfg').then(r=>r.json()).then(c=>{{
   $('foven').checked = !!c.enabled;
   $('fovnum').value = c.interval;
   $('fovunit').value = c.unit;
+  updateFovMore();
 }}).catch(()=>{{}});
-$('fovsave').onclick = async () => {{
-  const n = Math.max(1, Math.min(365, parseInt($('fovnum').value, 10) || 30));
-  const q = '?enabled=' + ($('foven').checked ? 1 : 0)
-          + '&interval=' + n + '&unit=' + encodeURIComponent($('fovunit').value);
-  try {{
-    const r = await fetch('/favcfg/set' + q);
-    const j = await r.json();
-    $('fovmsg').textContent = j.ok ? '已保存' : '保存失败';
-  }} catch (e) {{ $('fovmsg').textContent = '保存失败'; }}
-  setTimeout(() => {{ $('fovmsg').textContent = ''; }}, 2000);
-}};
+$('foven').onchange = () => {{ updateFovMore(); saveFovCfg(false); }};
+$('fovsave').onclick = () => saveFovCfg(true);
 
 // 当前标签下可见的壁纸：全部 或 只看已收藏
 function visible() {{
@@ -423,7 +435,7 @@ function loadMain() {{
 
 function render() {{
   const list = visible();
-  $('favcfg').style.display = view === 'fav' ? 'flex' : 'none';
+  $('favcfg').style.display = view === 'fav' ? 'inline-flex' : 'none';
   $('tab-all').classList.toggle('on', view === 'all');
   $('tab-fav').classList.toggle('on', view === 'fav');
   if (!DATA.length) {{
@@ -594,6 +606,14 @@ mod tests {
         assert!(html.contains("value=\"day\""));
         assert!(html.contains("fetch('/favcfg')"));
         assert!(html.contains("fetch('/favcfg/set'"));
+        // 设置条收进信息行，位于「已收藏」按钮左侧；默认折叠只显示开关
+        let info = html.find("id=\"info\"").unwrap();
+        let cfg = html.find("id=\"favcfg\"").unwrap();
+        let favbtn = html.find("id=\"favbtn\"").unwrap();
+        assert!(info < cfg && cfg < favbtn);
+        assert!(html.contains("id=\"fovmore\""));
+        assert!(html.contains("function updateFovMore()"));
+        assert!(html.contains("#fovmore{display:none"));
     }
 
     #[test]
