@@ -1,17 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1a8fb0"/>
-      <stop offset="1" stop-color="#0a4f68"/>
-    </linearGradient>
-    <linearGradient id="mtn" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f2fbff"/>
-      <stop offset="1" stop-color="#bfe4f2"/>
-    </linearGradient>
-  </defs>
-  <rect width="128" height="128" rx="26" fill="url(#sky)"/>
-  <circle cx="92" cy="36" r="15" fill="#ffd77a"/>
-  <path d="M10 100 L46 46 L72 80 L90 58 L118 100 Z" fill="url(#mtn)"/>
-  <path d="M46 46 L36 60 L46 58 L56 64 Z" fill="#ffffff" opacity="0.85"/>
-  <rect x="10" y="100" width="108" height="6" rx="3" fill="#8fd0e6"/>
-</svg>
+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4IiB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9InNreSIgeDE9IjAiIHkxPSIwIiB4Mj0iMCIgeTI9IjEiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiMxYThmYjAiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMGE0ZjY4Ii8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJtdG4iIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjZjJmYmZmIi8+CiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2JmZTRmMiIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICA8L2RlZnM+CiAgPHJlY3Qgd2lkdGg9IjEyOCIgaGVpZ2h0PSIxMjgiIHJ4PSIyNiIgZmlsbD0idXJsKCNza3kpIi8+CiAgPGNpcmNsZSBjeD0iOTIiIGN5PSIzNiIgcj0iMTUiIGZpbGw9IiNmZmQ3N2EiLz4KICA8cGF0aCBkPSJNMTAgMTAwIEw0NiA0NiBMNzIgODAgTDkwIDU4IEwxMTggMTAwIFoiIGZpbGw9InVybCgjbXRuKSIvPgogIDxwYXRoIGQ9Ik00NiA0NiBMMzYgNjAgTDQ2IDU4IEw1NiA2NCBaIiBmaWxsPSIjZmZmZmZmIiBvcGFjaXR5PSIwLjg1Ii8+CiAgPHJlY3QgeD0iMTAiIHk9IjEwMCIgd2lkdGg9IjEwOCIgaGVpZ2h0PSI2IiByeD0iMyIgZmlsbD0iIzhmZDBlNiIvPgo8L3N2Zz4K

@@ -1,14 +1,1 @@
-#!/bin/sh
-set -e
-# 刷新图标缓存：deepin 默认主题是 bloom（hicolor 被排除），两个主题都刷
-if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-    gtk-update-icon-cache -f -t /usr/share/icons/bloom 2>/dev/null || true
-    gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
-fi
-# 清理 DDE 启动器的图标缓存，避免升级后仍显示旧图标；覆盖 sudo 用户与 root
-for u in "${SUDO_USER:-}" "$(id -un)"; do
-    [ -n "$u" ] || continue
-    h=$(getent passwd "$u" 2>/dev/null | cut -d: -f6)
-    [ -n "$h" ] && [ -d "$h/.cache/deepin/icons" ] && rm -f "$h/.cache/deepin/icons/lithescape"* 2>/dev/null || true
-done
-echo "轻格壁纸已安装。运行 'lithescape &' 启动，或在启动器中打开。"
+IyEvYmluL3NoCnNldCAtZQojIOWIt+aWsOWbvuagh+e8k+WtmO+8mmRlZXBpbiDpu5jorqTkuLvpopjmmK8gYmxvb23vvIhoaWNvbG9yIOiiq+aOkumZpO+8ie+8jOS4pOS4quS4u+mimOmDveWItwppZiBjb21tYW5kIC12IGd0ay11cGRhdGUtaWNvbi1jYWNoZSA+L2Rldi9udWxsIDI+JjE7IHRoZW4KICAgIGd0ay11cGRhdGUtaWNvbi1jYWNoZSAtZiAtdCAvdXNyL3NoYXJlL2ljb25zL2Jsb29tIDI+L2Rldi9udWxsIHx8IHRydWUKICAgIGd0ay11cGRhdGUtaWNvbi1jYWNoZSAtZiAtdCAvdXNyL3NoYXJlL2ljb25zL2hpY29sb3IgMj4vZGV2L251bGwgfHwgdHJ1ZQpmaQojIOa4heeQhiBEREUg5ZCv5Yqo5Zmo55qE5Zu+5qCH57yT5a2Y77yM6YG/5YWN5Y2H57qn5ZCO5LuN5pi+56S65pen5Zu+5qCH77yb6KaG55uWIHN1ZG8g55So5oi35LiOIHJvb3QKZm9yIHUgaW4gIiR7U1VET19VU0VSOi19IiAiJChpZCAtdW4pIjsgZG8KICAgIFsgLW4gIiR1IiBdIHx8IGNvbnRpbnVlCiAgICBoPSQoZ2V0ZW50IHBhc3N3ZCAiJHUiIDI+L2Rldi9udWxsIHwgY3V0IC1kOiAtZjYpCiAgICBbIC1uICIkaCIgXSAmJiBbIC1kICIkaC8uY2FjaGUvZGVlcGluL2ljb25zIiBdICYmIHJtIC1mICIkaC8uY2FjaGUvZGVlcGluL2ljb25zL2xpdGhlc2NhcGUiKiAyPi9kZXYvbnVsbCB8fCB0cnVlCmRvbmUKZWNobyAi6L275qC85aOB57q45bey5a6J6KOF44CC6L+Q6KGMICdsaXRoZXNjYXBlICYnIOWQr+WKqO+8jOaIluWcqOWQr+WKqOWZqOS4reaJk+W8gOOAgiIK

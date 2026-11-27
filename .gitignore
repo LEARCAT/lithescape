@@ -1,16 +1,1 @@
-/target/
-*.deb
-*.dsc
-*.changes
-*.buildinfo
-.debbuild-*/
-deb*build*/
-.build-tmp*/
-# 打包暂存里的二进制（package.sh 每次 cp 进去，属构建产物不入库）
-deb/usr/bin/
-__pycache__/
-*.pyc
-*.pyo
-*.log
-*.swp
-.DS_Store
+L3RhcmdldC8KKi5kZWIKKi5kc2MKKi5jaGFuZ2VzCiouYnVpbGRpbmZvCi5kZWJidWlsZC0qLwpkZWIqYnVpbGQqLwouYnVpbGQtdG1wKi8KIyDmiZPljIXmmoLlrZjph4znmoTkuozov5vliLbvvIhwYWNrYWdlLnNoIOavj+asoSBjcCDov5vljrvvvIzlsZ7mnoTlu7rkuqfniankuI3lhaXlupPvvIkKZGViL3Vzci9iaW4vCl9fcHljYWNoZV9fLwoqLnB5YwoqLnB5bwoqLmxvZwoqLnN3cAouRFNfU3RvcmUK
