@@ -1,3 +1,10 @@
+lithescape (0.1.8) unstable; urgency=medium
+
+  * 左键点击托盘图标直接进入壁纸预览页面（中键仍打开图片故事）。
+  * 点击统一走主循环异步派发，不在 DBus 回调里启动浏览器，避免拖累托盘。
+
+ -- LitheScape  Fri, 27 Nov 2026 18:22:00 +0800
+
 lithescape (0.1.7) unstable; urgency=medium
 
   * 启动后自动切换为必应每日壁纸（后台执行，仅失败时提示）。

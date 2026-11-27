@@ -176,7 +176,7 @@ async fn main() -> zbus::Result<()> {
     let menu_path = ObjectPath::try_from("/Menu").unwrap();
     session
         .object_server()
-        .at(item_path.clone(), SniItem::new(shared.clone()))
+        .at(item_path.clone(), SniItem::new(shared.clone(), click_tx.clone()))
         .await?;
     session
         .object_server()

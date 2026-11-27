@@ -184,11 +184,13 @@ fn menu_layout() -> (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) {
 pub struct SniItem {
     #[allow(dead_code)]
     shared: Shared,
+    /// 菜单/托盘点击统一投递给主循环，绝不在 DBus 回调里做耗时操作
+    click_tx: ClickSender,
 }
 
 impl SniItem {
-    pub fn new(shared: Shared) -> Self {
-        Self { shared }
+    pub fn new(shared: Shared, click_tx: ClickSender) -> Self {
+        Self { shared, click_tx }
     }
 }
 
@@ -265,21 +267,18 @@ impl SniItem {
         )
     }
 
-    /// 左键点击托盘 —— 打开图片故事
+    /// 左键点击托盘 —— 打开壁纸预览（投递给主循环异步处理，不阻塞 SNI 连接）
     fn activate(&self, _x: i32, _y: i32) {
-        let state: State = load_state();
-        let idx = state.current_index.to_string();
-        if let Some(meta) = state.meta.get(&idx) {
-            if !meta.copyrightlink.is_empty() {
-                bing::open_url(&meta.copyrightlink);
-                return;
-            }
+        if let Some(tx) = self.click_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(ID_PREVIEW);
         }
-        bing::open_url("https://www.bing.com");
     }
 
+    /// 中键点击托盘 —— 打开图片故事（同样走主循环，避免回调内耗时）
     fn secondary_activate(&self, _x: i32, _y: i32) {
-        self.activate(0, 0);
+        if let Some(tx) = self.click_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(ID_STORY);
+        }
     }
 
     fn context_menu(&self, _x: i32, _y: i32) {
