@@ -69,19 +69,12 @@ fn http_get(url: &str, timeout_secs: u64) -> Option<String> {
     String::from_utf8(out.stdout).ok()
 }
 
-/// 一次更新流程的结果：给用户的提示 + 是否需要自动重启。
-pub struct UpdateResult {
-    pub message: String,
-    /// 只有 dpkg 真正装完才为 true；系统安装器兜底路径装没装完无法感知。
-    pub restart: bool,
-}
-
 /// 上游发布信息。
 #[derive(Debug, Clone)]
 pub struct Release {
     /// 纯版本号，如 0.1.2（去掉 v 前缀）。
     pub version: String,
-    /// deb 的匿名下载地址（来自 GitHub assets 或按约定拼接）。
+    /// deb 的匿名下载地址（优先 Gitee assets，缺失时 GitHub 补齐）。
     pub deb_url: Option<String>,
     /// 更新说明。
     pub notes: String,
@@ -102,7 +95,8 @@ fn json_deb_url(text: &str) -> Option<String> {
     None
 }
 
-/// 探测最新 Release：两端都查，版本取较高者；下载优先 Gitee 附件，回退 GitHub。
+/// 探测最新 Release：对齐 LitheZones —— Gitee 为主（版本 + deb 地址），
+/// GitHub 只作双保险；两侧都取不到 deb 时按约定拼 Gitee 标准下载路径。
 pub fn check(current: &str) -> Option<Release> {
     let github = http_get(&github_latest(), 25).and_then(|t| {
         let root: Value = serde_json::from_str(&t).ok()?;
@@ -132,29 +126,21 @@ pub fn check(current: &str) -> Option<Release> {
         })
     });
 
-    let mut release = match (github, gitee) {
-        (Some(gh), Some(gt)) => {
-            let gh_v = parse_version(&gh.version).unwrap_or([0, 0, 0]);
-            let gt_v = parse_version(&gt.version).unwrap_or([0, 0, 0]);
-            if gt_v > gh_v {
-                gt
-            } else if gh_v > gt_v {
-                gh
-            } else if gt.deb_url.is_some() {
-                // 版本一致时优先 Gitee 附件，国内下载更稳。
-                gt
-            } else {
-                gh
+    let mut release = match (gitee, github) {
+        (Some(gt), gh) => {
+            let mut r = gt;
+            if r.deb_url.is_none() {
+                r.deb_url = gh.and_then(|g| g.deb_url);
             }
+            r
         }
-        (Some(gh), None) => gh,
-        (None, Some(gt)) => gt,
+        (None, Some(gh)) => gh,
         (None, None) => return None,
     };
     if release.deb_url.is_none() {
         let v = &release.version;
         release.deb_url = Some(format!(
-            "https://github.com/{GITHUB_REPO}/releases/download/v{v}/lithescape_{v}_amd64.deb"
+            "https://gitee.com/{GITEE_REPO}/releases/download/v{v}/lithescape_{v}_amd64.deb"
         ));
     }
     if is_newer(&release.version, current) {
@@ -278,11 +264,18 @@ pub fn download(release: &Release) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// 安装结果。只有 dpkg 真正把新二进制装上才需要自动拉起新版；
+/// 交给系统安装器时 deb 尚未落地，重启只会启动旧版本，必须交给用户手动完成。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallOutcome {
+    Installed,
+    OpenedInstaller,
+    Failed,
+}
+
 /// 安装 deb：依次尝试 sudo -n、pkexec、xdg-open。
-/// 返回 (是否成功, 提示文案, 是否可自动重启)。
-/// 前两条路径命令同步结束，确认装完可以自动重启；xdg-open 只是把包交给
-/// 系统安装器，本进程无法知道用户什么时候点完安装，因此不自动重启。
-pub fn install(path: &PathBuf) -> (bool, String, bool) {
+/// 本函数只在独立的 --apply-update 助手进程里调用，旧进程此时已退出。
+pub fn install(path: &PathBuf) -> (InstallOutcome, String) {
     let deb = path.to_string_lossy();
 
     if Command::new("sudo")
@@ -294,9 +287,8 @@ pub fn install(path: &PathBuf) -> (bool, String, bool) {
         .unwrap_or(false)
     {
         return (
-            true,
-            "已更新到新版本，正在自动重启".to_string(),
-            true,
+            InstallOutcome::Installed,
+            "已更新到新版本，即将自动启动".to_string(),
         );
     }
 
@@ -307,9 +299,8 @@ pub fn install(path: &PathBuf) -> (bool, String, bool) {
         .unwrap_or(false)
     {
         return (
-            true,
-            "已更新到新版本，正在自动重启".to_string(),
-            true,
+            InstallOutcome::Installed,
+            "已更新到新版本，即将自动启动".to_string(),
         );
     }
 
@@ -321,65 +312,51 @@ pub fn install(path: &PathBuf) -> (bool, String, bool) {
             .unwrap_or(false)
         {
             return (
-                true,
-                "deb 已下载，已打开系统安装器，请在安装完成后手动重启程序".to_string(),
-                false,
+                InstallOutcome::OpenedInstaller,
+                "deb 已下载，已打开系统安装器，请在安装完成后手动启动程序".to_string(),
             );
         }
     }
 
     (
-        false,
+        InstallOutcome::Failed,
         "更新包已下载，但无法自动安装，请手动安装".to_string(),
-        false,
     )
 }
 
-/// 更新装完后自动重启：先让旧进程退出释放单实例锁，再拉起新版本。
-/// 用独立会话启动，避免随本进程退出而被带走；调用方不要再执行后续逻辑。
-pub fn restart_app() -> ! {
-    // 等 1 秒给当前进程退出、DBus 名称释放的时间；
-    // setsid 保证新进程脱离当前终端会话，nohup 作为兜底。
-    let script = "sleep 1; if command -v setsid >/dev/null 2>&1; then setsid /usr/bin/lithescape >/dev/null 2>&1; else nohup /usr/bin/lithescape >/dev/null 2>&1 & fi";
-    let _ = Command::new("sh").arg("-c").arg(script).spawn();
-    // 给通知守护进程一点时间把「正在重启」这条通知发出去。
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    std::process::exit(0);
-}
-
-/// 供菜单点击调用：检查 → 下载 → 安装，全程同步（调用方应放 spawn_blocking）。
-pub fn run_update(current: &str) -> UpdateResult {
-    let no_restart = |message: String| UpdateResult {
-        message,
-        restart: false,
-    };
-
+/// 供托盘菜单调用：只检查 + 下载，不安装。
+/// 返回 (通知文案, 下载好的 deb 路径)。主循环收到路径后先退出旧版，
+/// 再由退出清理段拉起 --apply-update 助手，避免"旧版运行中就替换二进制"。
+pub fn prepare_update(current: &str) -> (String, Option<PathBuf>) {
     let release = match check(current) {
         Some(r) => r,
         None => {
-            return no_restart("当前已是最新版本，或暂时无法连接更新服务器".to_string())
+            return (
+                "当前已是最新版本，或暂时无法连接更新服务器".to_string(),
+                None,
+            )
         }
     };
-    let path = match download(&release) {
-        Ok(p) => p,
-        Err(e) => return no_restart(format!("下载更新失败：{e}")),
-    };
-    let (ok, msg, auto_restart) = install(&path);
-    if !ok {
-        return no_restart(format!("{msg}，位置: {}", path.display()));
+    match download(&release) {
+        Ok(p) => (
+            format!("已下载新版本 {}，即将退出旧版并安装", release.version),
+            Some(p),
+        ),
+        Err(e) => (format!("下载更新失败：{e}"), None),
     }
-    let message = {
-        let brief = release_brief(&release);
-        if brief.is_empty() {
-            format!("发现新版本 {}：{}", release.version, msg)
-        } else {
-            format!("发现新版本 {}（{}）：{}", release.version, brief, msg)
+}
+
+/// 供 --apply-update 助手进程调用：安装已下载的 deb。
+/// 返回 (通知文案, 是否安装成功可以拉起新版)。
+pub fn apply_downloaded(path: &PathBuf) -> (String, bool) {
+    let (outcome, msg) = install(path);
+    let text = match outcome {
+        InstallOutcome::Installed => format!("更新完成：{msg}"),
+        InstallOutcome::OpenedInstaller | InstallOutcome::Failed => {
+            format!("{msg}，位置: {}", path.display())
         }
     };
-    UpdateResult {
-        message,
-        restart: auto_restart,
-    }
+    (text, outcome == InstallOutcome::Installed)
 }
 
 #[cfg(test)]

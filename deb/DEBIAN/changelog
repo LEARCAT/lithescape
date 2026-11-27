@@ -1,3 +1,12 @@
+lithescape (0.1.6) unstable; urgency=medium
+
+  * 壁纸默认优先 4K/UHD（3840x2160），下载失败自动回退低分辨率；旧归档链接也会升级。
+  * 更新改为旧版先退出释放 D-Bus 名称，再由独立助手安装并启动新版，与 LitheZones 对齐。
+  * 更新源改为 Gitee 主、GitHub 兜底，地址缺失时拼 Gitee 标准下载路径。
+  * 新增 --check-update 诊断参数，可在终端验证「有新版提示、无新版静默」。
+
+ -- LitheScape  Fri, 27 Nov 2026 14:20:00 +0800
+
 lithescape (0.1.5) unstable; urgency=medium
 
   * 更新安装完成后自动重启程序，无需手动点启动器。

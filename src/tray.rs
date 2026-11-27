@@ -1,11 +1,12 @@
 //! SNI (StatusNotifierItem) 托盘 + DBusMenu 菜单
 //!
 //! 直接使用 zbus 实现标准协议，不依赖 GTK / AppIndicator。
-//! deepin V23/V25 的 dock 同时支持 SNI，图标会在托盘区显示。
+//! deepin V25 的 dock 同时支持 SNI，图标会在托盘区显示。
 
 use crate::config::{autostart_enabled, load_state, set_autostart, Config, MetaInfo, State};
 use crate::{bing, VERSION};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use zbus::interface;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
@@ -85,6 +86,8 @@ pub struct Shared {
     pub busy: BusyState,
     pub previews: Arc<Mutex<Vec<PreviewItem>>>,
     pub gallery_port: Arc<Mutex<u16>>,
+    /// 更新包下载完成后回传给主循环，主循环退出后再交给助手安装。
+    pub update_tx: Option<UnboundedSender<PathBuf>>,
 }
 
 impl Shared {
@@ -383,7 +386,8 @@ pub fn dispatch_click(shared: &Shared, id: i32) {
             }
         }
         ID_UPDATE => {
-            std::thread::spawn(move || check_update(&cfg));
+            let tx = shared.update_tx.clone();
+            std::thread::spawn(move || check_update(&cfg, tx));
         }
         ID_QUIT => {
             std::process::exit(0);
@@ -455,14 +459,13 @@ impl DbMenu {
     ) -> zbus::Result<()>;
 }
 
-/// 软件更新：从 Gitee/GitHub Releases 探测 → 下载 deb → 安装 → 自动重启。
-/// 全程同步，调用方（dispatch_click）已放在 spawn_blocking 里，不卡托盘。
-fn check_update(_cfg: &Config) {
-    let result = crate::updater::run_update(VERSION);
-    bing::notify("软件更新", &result.message);
-    if result.restart {
-        // 通知发出后再拉起新版本；restart_app 内部退出当前进程。
-        crate::updater::restart_app();
+/// 软件更新：只检查 + 下载，然后把 deb 路径回传主循环。
+/// 旧进程随后退出释放 D-Bus 名称，由独立的 --apply-update 助手安装并拉起新版。
+fn check_update(_cfg: &Config, update_tx: Option<UnboundedSender<PathBuf>>) {
+    let (msg, deb) = crate::updater::prepare_update(VERSION);
+    bing::notify("软件更新", &msg);
+    if let (Some(tx), Some(path)) = (update_tx, deb) {
+        let _ = tx.send(path);
     }
 }
 

@@ -35,57 +35,19 @@ fn client() -> Client {
         .unwrap_or_else(|_| Client::new())
 }
 
-/// 检测屏幕逻辑宽度，失败返回 0
-fn screen_width() -> u32 {
-    // X11：xrandr 的两个常用输出格式
-    for line in cmd(&["xrandr", "--current"]).unwrap_or_default().lines() {
-        if line.contains(" connected") {
-            if let Some(part) = line.split_whitespace().find(|w| {
-                w.contains('x')
-                    && w.chars()
-                        .next()
-                        .map(|c| c.is_ascii_digit())
-                        .unwrap_or(false)
-            }) {
-                let w = part.split('x').next().and_then(|s| s.parse::<u32>().ok());
-                if let Some(w) = w {
-                    return w;
-                }
-            }
-        }
-    }
-    // Wayland / 其他：xdpyinfo
-    if let Some(out) = cmd(&["xdpyinfo"]) {
-        if let Some(line) = out.lines().find(|l| l.contains("dimensions:")) {
-            let dims = line.split_whitespace().nth(1).unwrap_or("");
-            if let Some(w) = dims.split('x').next().and_then(|s| s.parse::<u32>().ok()) {
-                return w;
-            }
-        }
-    }
-    0
-}
-
-/// 按屏幕宽度选择必应图片尺寸档；返回 None 表示沿用配置值
-fn auto_resolution() -> Option<String> {
-    let w = screen_width();
-    if w == 0 {
-        return None;
-    }
-    for (name, min_w) in RESOLUTIONS {
-        if w >= *min_w {
-            return Some((*name).to_string());
-        }
-    }
-    None
-}
-
-/// 解析最终使用的分辨率档：配置为 auto 时按屏幕自适应
+/// 解析最终使用的分辨率档。
+/// auto / 4K / UHD 一律优先 4K（_UHD.jpg 实测 3840x2160），
+/// 下载失败时由 download_best_image 逐档回退；用户显式配置较低档时尊重配置。
 fn effective_resolution(cfg: &Config) -> String {
-    if cfg.resolution.eq_ignore_ascii_case("auto") || cfg.resolution.is_empty() {
-        auto_resolution().unwrap_or_else(|| "1920x1080".into())
+    let r = cfg.resolution.trim();
+    if r.is_empty()
+        || r.eq_ignore_ascii_case("auto")
+        || r.eq_ignore_ascii_case("4k")
+        || r.eq_ignore_ascii_case("uhd")
+    {
+        "UHD".to_string()
     } else {
-        cfg.resolution.clone()
+        r.to_string()
     }
 }
 
@@ -130,11 +92,55 @@ pub fn fetch_metadata(cfg: &Config, index: i32) -> Result<(MetaInfo, String), St
 fn image_url_for(urlbase: &str, raw_url: &str, res: &str) -> String {
     if urlbase.is_empty() {
         format!("{}{}", BING_BASE, raw_url)
-    } else if res.eq_ignore_ascii_case("UHD") {
+    } else if res.eq_ignore_ascii_case("UHD") || res.eq_ignore_ascii_case("4K") {
         format!("{}{}_UHD.jpg", BING_BASE, urlbase)
     } else {
         format!("{}{}_{}.jpg", BING_BASE, urlbase, res)
     }
+}
+
+/// 从直链反推 urlbase（去掉末尾的 _<档位>.jpg）
+fn urlbase_from(image_url: &str) -> Option<&str> {
+    for (name, _) in RESOLUTIONS {
+        let suffix = format!("_{name}.jpg");
+        if let Some(base) = image_url.strip_suffix(&suffix) {
+            return Some(base);
+        }
+    }
+    None
+}
+
+/// 按从高到低生成候选直链；旧历史里存的 1080p 链接也会被升级到 UHD。
+fn candidate_urls(image_url: &str) -> Vec<String> {
+    match urlbase_from(image_url) {
+        Some(base) => RESOLUTIONS
+            .iter()
+            .map(|(name, _)| format!("{base}_{name}.jpg"))
+            .collect(),
+        None => vec![image_url.to_string()],
+    }
+}
+
+/// 依次尝试各分辨率档，返回实际下载成功的直链。
+fn download_best_image(candidates: &[String], dest: &Path) -> Result<String, String> {
+    let mut last = String::new();
+    for url in candidates {
+        match download_image_min(url, dest, 20_000) {
+            Ok(()) => return Ok(url.clone()),
+            Err(e) => last = e,
+        }
+    }
+    Err(format!("所有分辨率均下载失败：{last}"))
+}
+
+/// 从实际直链判断分辨率档，用于缓存文件名。
+fn resolution_from_url(image_url: &str) -> String {
+    for (name, _) in RESOLUTIONS {
+        if image_url.ends_with(&format!("_{name}.jpg")) {
+            return (*name).to_string();
+        }
+    }
+    "unknown".to_string()
 }
 
 /// 批量拉取最近 N 天元数据（一次 API 调用）
@@ -187,19 +193,15 @@ fn slug(url: &str) -> String {
         .to_string()
 }
 
-pub fn image_path(cfg: &Config, meta: &MetaInfo, image_url: &str) -> PathBuf {
+pub fn image_path(meta: &MetaInfo, image_url: &str) -> PathBuf {
     let date = if meta.enddate.is_empty() {
         "daily".to_string()
     } else {
         meta.enddate.clone()
     };
-    let res = effective_resolution(cfg);
+    let res = resolution_from_url(image_url);
     let name = format!("bing_{}_{}_{}.jpg", date, slug(image_url), res);
     save_dir().join(name)
-}
-
-pub fn download_image(url: &str, dest: &Path) -> Result<(), String> {
-    download_image_min(url, dest, 20_000)
 }
 
 /// 带最小字节数的下载（缩略图阈值更低）
@@ -342,7 +344,7 @@ pub fn set_wallpaper(path: &Path) -> bool {
 pub fn apply(index: i32, force: bool, cfg: &Config) -> Result<String, String> {
     // Bing 接口只给最近 8 天（idx 再大返回重复数据）。翻页到更早的日期时，
     // 从本地历史归档读取；只有「今天」或强制刷新才实时请求接口。
-    let (meta, image_url) = if force || index == 0 {
+    let (meta, mut image_url) = if force || index == 0 {
         let fetched = fetch_metadata(cfg, index)?;
         // 顺手归档，日积月累形成比 8 天更长的历史
         crate::config::merge_history(vec![HistoryItem {
@@ -356,10 +358,19 @@ pub fn apply(index: i32, force: bool, cfg: &Config) -> Result<String, String> {
         // 归档尚无此日期（首次运行），回退到接口；idx 超过 7 时接口会返回重复数据
         fetch_metadata(cfg, index)?
     };
-    let dest = image_path(cfg, &meta, &image_url);
+    let dest = image_path(&meta, &image_url);
 
     if !dest.exists() || force {
-        download_image(&image_url, &dest)?;
+        let candidates = candidate_urls(&image_url);
+        let used = download_best_image(&candidates, &dest)?;
+        if used != image_url {
+            image_url = used;
+            // 旧归档里的 1080p 链接升级为实际可用的最高档，下次直接用 4K。
+            crate::config::merge_history(vec![HistoryItem {
+                meta: meta.clone(),
+                image_url: image_url.clone(),
+            }]);
+        }
     }
 
     let mut state: State = load_state();
@@ -392,11 +403,12 @@ pub fn apply_from_preview(
     meta: &MetaInfo,
     image_url: &str,
     index: i32,
-    cfg: &Config,
+    _cfg: &Config,
 ) -> Result<String, String> {
-    let dest = image_path(cfg, meta, image_url);
+    let dest = image_path(meta, image_url);
     if !dest.exists() {
-        download_image(image_url, &dest)?;
+        let candidates = candidate_urls(image_url);
+        let _ = download_best_image(&candidates, &dest)?;
     }
     let mut state: State = load_state();
     if state.original_background_uris.is_empty() {
@@ -564,4 +576,47 @@ pub fn notify(title: &str, body: &str) {
     let _ = Command::new("notify-send")
         .args(["-a", "轻格壁纸", "-i", "lithescape", title, body])
         .spawn();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+
+    #[test]
+    fn auto_prefers_4k() {
+        let cfg = Config {
+            resolution: "auto".into(),
+            ..Config::default()
+        };
+        assert_eq!(effective_resolution(&cfg), "UHD");
+        let cfg4k = Config {
+            resolution: "4K".into(),
+            ..Config::default()
+        };
+        assert_eq!(effective_resolution(&cfg4k), "UHD");
+        let cfg1080 = Config {
+            resolution: "1920x1080".into(),
+            ..Config::default()
+        };
+        assert_eq!(effective_resolution(&cfg1080), "1920x1080");
+    }
+
+    #[test]
+    fn uhd_url_and_fallback_order() {
+        let url = "https://www.bing.com/th?id=OHR.Test_UHD.jpg";
+        let urls = candidate_urls(url);
+        assert_eq!(urls.len(), RESOLUTIONS.len());
+        assert!(urls[0].ends_with("_UHD.jpg"));
+        assert!(urls[1].ends_with("_1920x1080.jpg"));
+        assert_eq!(urlbase_from(url), Some("https://www.bing.com/th?id=OHR.Test"));
+    }
+
+    #[test]
+    fn old_1080p_history_upgrades_to_uhd() {
+        let url = "https://www.bing.com/th?id=OHR.Test_1920x1080.jpg";
+        let urls = candidate_urls(url);
+        assert!(urls[0].ends_with("_UHD.jpg"));
+        assert_eq!(resolution_from_url(&urls[0]), "UHD");
+    }
 }
