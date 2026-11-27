@@ -59,6 +59,62 @@ fn spawn_current_binary() {
         .spawn();
 }
 
+/// 从 deb 文件名解析版本号：lithescape_0.2.1_amd64.deb -> 0.2.1
+fn version_from_deb(path: &std::path::Path) -> Option<String> {
+    let name = path.file_name()?.to_str()?;
+    let rest = name.strip_prefix("lithescape_")?;
+    let ver = rest.split('_').next()?.to_string();
+    if ver.is_empty() {
+        None
+    } else {
+        Some(ver)
+    }
+}
+
+/// 拉起一个脱离会话的等待助手：系统安装器装完新版后由它自动启动程序。
+fn spawn_waiter(version: &str) {
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("[warn] 无法启动安装等待助手: {e}");
+            return;
+        }
+    };
+    let mut cmd = std::process::Command::new("setsid");
+    cmd.arg(&exe)
+        .arg("--wait-and-start")
+        .arg(version)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    if cmd.spawn().is_err() {
+        let _ = std::process::Command::new(&exe)
+            .arg("--wait-and-start")
+            .arg(version)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+    }
+}
+
+/// 最多等 15 分钟，每 2 秒查一次 dpkg 版本；新版本落地后自动拉起程序。
+/// 用户取消安装则超时静默退出，不会留下常驻进程。
+fn wait_for_install_then_start(version: &str) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(900);
+    while std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        if updater::installed_version().as_deref() == Some(version) {
+            // 给 dpkg 的配置收尾留一点时间，避免拉起时被替换中的旧二进制影响
+            std::thread::sleep(std::time::Duration::from_millis(800));
+            bing::notify("软件更新", "安装完成，已自动启动轻格壁纸");
+            spawn_current_binary();
+            return;
+        }
+    }
+    eprintln!("[info] 等待安装超时，未自动启动");
+}
+
 #[tokio::main]
 async fn main() -> zbus::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -79,14 +135,33 @@ async fn main() -> zbus::Result<()> {
         return Ok(());
     }
 
+    // 安装等待助手：系统安装器完成安装后自动拉起新版（见 spawn_waiter）。
+    if let Some(pos) = args.iter().position(|a| a == "--wait-and-start") {
+        if let Some(ver) = args.get(pos + 1) {
+            wait_for_install_then_start(ver);
+        }
+        return Ok(());
+    }
+
     // 更新助手模式：旧进程已退出并释放 D-Bus 名称，这里只负责安装 + 启动新版。
     if let Some(pos) = args.iter().position(|a| a == "--apply-update") {
         if let Some(deb) = args.get(pos + 1) {
             let path = std::path::PathBuf::from(deb);
-            let (msg, ok) = updater::apply_downloaded(&path);
+            let (msg, outcome) = updater::apply_downloaded(&path);
             bing::notify("软件更新", &msg);
-            if ok {
-                spawn_current_binary();
+            match outcome {
+                updater::InstallOutcome::Installed => {
+                    // dpkg 已真正装好：稍等收尾后立即启动新版
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    spawn_current_binary();
+                }
+                updater::InstallOutcome::OpenedInstaller => {
+                    // 安装器还要用户点几步，交给等待助手，装完自动启动
+                    if let Some(ver) = version_from_deb(&path) {
+                        spawn_waiter(&ver);
+                    }
+                }
+                updater::InstallOutcome::Failed => {}
             }
         }
         return Ok(());
@@ -255,4 +330,24 @@ async fn main() -> zbus::Result<()> {
         eprintln!("[info] 已拉起更新助手: {}", deb.display());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deb_version_parsing() {
+        assert_eq!(
+            version_from_deb(std::path::Path::new(
+                "/home/user/.cache/lithescape/lithescape_0.2.1_amd64.deb"
+            )),
+            Some("0.2.1".to_string())
+        );
+        assert_eq!(
+            version_from_deb(std::path::Path::new("/tmp/lithescape_1.10.0_amd64.deb")),
+            Some("1.10.0".to_string())
+        );
+        assert_eq!(version_from_deb(std::path::Path::new("/tmp/other.deb")), None);
+    }
 }

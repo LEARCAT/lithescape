@@ -1,3 +1,9 @@
+lithescape (0.2.2) unstable; urgency=medium
+
+  * 修复通过系统安装器完成更新后无法自动启动的问题：新增后台等待助手，检测到新版落地后自动拉起程序。
+
+ -- LitheScape  Fri, 27 Nov 2026 19:58:00 +0800
+
 lithescape (0.2.1) unstable; urgency=medium
 
   * 「我的收藏」页自动更换设置改为与「已收藏」同一行：默认只显示开关，开启后就地展开更换时间设置。
