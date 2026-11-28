@@ -2,7 +2,7 @@
 
 一个为 **deepin V25** 编写的必应每日壁纸托盘程序。Rust 单二进制 + zbus 直连 SNI，不依赖 GTK / AppIndicator，托盘常驻，自动更换壁纸。
 
-- 当前版本：**0.2.8**
+- 当前版本：**0.2.9**
 - 适用环境：deepin V25、amd64（二进制依赖 GLIBC_2.34 及以上）
 - 许可证：[GPL-3.0-or-later](LICENSE)
 
@@ -30,12 +30,12 @@
 
 ## 安装
 
-图形方式：双击 `lithescape_0.2.8_amd64.deb`，用系统安装器安装。
+图形方式：双击 `lithescape_0.2.9_amd64.deb`，用系统安装器安装。
 
 命令行方式：
 
 ```bash
-sudo dpkg -i lithescape_0.2.8_amd64.deb
+sudo dpkg -i lithescape_0.2.9_amd64.deb
 ```
 
 装前先退出旧实例（`pkill -f lithescape`）。启动器图标若未刷新，注销重登一次。

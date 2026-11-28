@@ -78,7 +78,6 @@ pub fn fetch_metadata(cfg: &Config, index: i32) -> Result<(MetaInfo, String), St
         title: s("title"),
         copyright: s("copyright"),
         copyrightlink: s("copyrightlink"),
-        quiz: s("quiz"),
     };
 
     let urlbase = s("urlbase");
@@ -170,7 +169,6 @@ pub fn fetch_recent(cfg: &Config, n: i32) -> Result<Vec<(MetaInfo, String)>, Str
             title: s("title"),
             copyright: s("copyright"),
             copyrightlink: s("copyrightlink"),
-            quiz: s("quiz"),
         };
         let url = image_url_for(&s("urlbase"), &s("url"), &res);
         out.push((meta, url));
@@ -278,6 +276,7 @@ fn gv_quote(s: &str) -> String {
     format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'"))
 }
 
+/// 读取当前壁纸 URI 列表，用于写入后校验是否真正生效
 pub fn current_background_uris() -> Vec<String> {
     let out = cmd(&[
         "gsettings",
@@ -374,25 +373,18 @@ pub fn apply(index: i32, force: bool, cfg: &Config) -> Result<String, String> {
     }
 
     let mut state: State = load_state();
-    if state.original_background_uris.is_empty() {
-        state.original_background_uris = current_background_uris();
-    }
     if !set_wallpaper(&dest) {
         return Err("壁纸设置失败，DDE 接口与 gsettings 均不可用".into());
     }
 
     state.current_index = index;
     state.last_date = meta.enddate.clone();
-    state.last_path = dest.display().to_string();
     state.last_title = meta.title.clone();
-    state.last_copyright = meta.copyright.clone();
-    state.last_set_at = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     // index 0 = 每日壁纸；翻页到历史日期则是用户选定壁纸
     state.wallpaper_mode = if index == 0 { "daily" } else { "favorite" }.into();
     state.meta.insert(index.to_string(), meta.clone());
     save_state(&state);
 
-    let _ = state;
     Ok(if meta.copyright.is_empty() {
         meta.title
     } else {
@@ -405,7 +397,6 @@ pub fn apply_from_preview(
     meta: &MetaInfo,
     image_url: &str,
     index: i32,
-    _cfg: &Config,
 ) -> Result<String, String> {
     let dest = image_path(meta, image_url);
     if !dest.exists() {
@@ -413,18 +404,12 @@ pub fn apply_from_preview(
         let _ = download_best_image(&candidates, &dest)?;
     }
     let mut state: State = load_state();
-    if state.original_background_uris.is_empty() {
-        state.original_background_uris = current_background_uris();
-    }
     if !set_wallpaper(&dest) {
         return Err("壁纸设置失败，DDE 接口与 gsettings 均不可用".into());
     }
     state.current_index = index;
     state.last_date = meta.enddate.clone();
-    state.last_path = dest.display().to_string();
     state.last_title = meta.title.clone();
-    state.last_copyright = meta.copyright.clone();
-    state.last_set_at = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     // 从画廊选中的壁纸属于用户选定，不再被每日壁纸自动覆盖
     state.wallpaper_mode = "favorite".into();
     state.meta.insert(index.to_string(), meta.clone());
@@ -446,7 +431,7 @@ pub fn apply_favorite(item: &crate::config::HistoryItem) -> Result<String, Strin
         .position(|h| h.meta.enddate == item.meta.enddate)
         .map(|i| i as i32)
         .unwrap_or(0);
-    apply_from_preview(&item.meta, &item.image_url, index, &Config::default())
+    apply_from_preview(&item.meta, &item.image_url, index)
 }
 
 /// 读取系统壁纸轮播配置（DBus 属性 WallpaperSlideShow，形如 {"DP-0&&1":"900"}）
@@ -518,7 +503,6 @@ pub fn disable_system_slideshow() -> String {
 }
 
 /// 恢复系统壁纸轮播配置
-#[allow(dead_code)]
 pub fn restore_slideshow(raw: &str) -> bool {
     if raw.is_empty() {
         return false;
@@ -549,36 +533,6 @@ pub fn restore_slideshow(raw: &str) -> bool {
         }
     }
     ok
-}
-
-/// 恢复安装前壁纸（保留接口，供后续菜单项使用）
-#[allow(dead_code)]
-pub fn restore() -> Result<String, String> {
-    let state: State = load_state();
-    let uris = state.original_background_uris;
-    if uris.is_empty() {
-        return Err("没有记录安装前的壁纸".into());
-    }
-    let value = format!(
-        "[{}]",
-        uris.iter()
-            .map(|u| gv_quote(u))
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-    let out = cmd_output(&[
-        "gsettings",
-        "set",
-        "com.deepin.dde.appearance",
-        "background-uris",
-        &value,
-    ])
-    .ok_or_else(|| "恢复失败：命令超时或执行失败".to_string())?;
-    if out.status.success() {
-        Ok(uris.join(", "))
-    } else {
-        Err("恢复失败".into())
-    }
 }
 
 pub fn open_url(url: &str) {

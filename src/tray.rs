@@ -182,15 +182,13 @@ fn menu_layout() -> (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) {
 }
 
 pub struct SniItem {
-    #[allow(dead_code)]
-    shared: Shared,
     /// 菜单/托盘点击统一投递给主循环，绝不在 DBus 回调里做耗时操作
     click_tx: ClickSender,
 }
 
 impl SniItem {
-    pub fn new(shared: Shared, click_tx: ClickSender) -> Self {
-        Self { shared, click_tx }
+    pub fn new(click_tx: ClickSender) -> Self {
+        Self { click_tx }
     }
 }
 
@@ -297,7 +295,7 @@ pub struct DbMenu {
 }
 
 impl DbMenu {
-    pub fn new(_shared: Shared, click_tx: ClickSender) -> Self {
+    pub fn new(click_tx: ClickSender) -> Self {
         Self { click_tx }
     }
 }
@@ -383,7 +381,7 @@ pub fn dispatch_click(shared: &Shared, id: i32) {
         }
         ID_UPDATE => {
             let tx = shared.update_tx.clone();
-            std::thread::spawn(move || check_update(&cfg, tx));
+            std::thread::spawn(move || check_update(tx));
         }
         ID_QUIT => {
             std::process::exit(0);
@@ -463,7 +461,7 @@ impl DbMenu {
 ///   头：「正在检查更新…」点击立即反馈
 ///   尾：下载完成 / 已是最新 / 失败，一条结果
 /// 下载过程静默，不弹通知。
-fn check_update(_cfg: &Config, update_tx: Option<UnboundedSender<PathBuf>>) {
+fn check_update(update_tx: Option<UnboundedSender<PathBuf>>) {
     // 1) 点击即反馈：立刻弹「正在检查更新」，避免用户以为没反应
     let id = bing::notify_progress("软件更新", "正在检查更新…", 0, 0).unwrap_or(0);
 

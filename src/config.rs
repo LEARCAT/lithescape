@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
-    pub update_url: String,
     pub market: String,
     pub resolution: String,
     pub check_interval: u64,
@@ -16,7 +15,6 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            update_url: String::new(),
             market: "zh-CN".into(),
             resolution: "auto".into(),
             check_interval: 1800,
@@ -29,11 +27,7 @@ impl Default for Config {
 pub struct State {
     pub current_index: i32,
     pub last_date: String,
-    pub last_path: String,
     pub last_title: String,
-    pub last_copyright: String,
-    pub last_set_at: String,
-    pub original_background_uris: Vec<String>,
     /// 启动前的系统壁纸轮播配置（JSON），供恢复用
     pub original_slideshow: String,
     /// 壁纸来源模式：daily=跟随每日壁纸，favorite=用户选定/收藏的壁纸
@@ -49,7 +43,6 @@ pub struct MetaInfo {
     pub title: String,
     pub copyright: String,
     pub copyrightlink: String,
-    pub quiz: String,
 }
 
 /// 历史归档条目：Bing 接口只给最近 8 天，把每天拉到的壁纸存下来，
@@ -219,13 +212,6 @@ pub fn load_config() -> Config {
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default()
-}
-
-#[allow(dead_code)]
-pub fn save_config(cfg: &Config) {
-    if let Ok(s) = serde_json::to_string_pretty(cfg) {
-        let _ = atomic_write(&config_path(), &s);
-    }
 }
 
 pub fn load_state() -> State {

@@ -143,6 +143,26 @@ async fn main() -> zbus::Result<()> {
         return Ok(());
     }
 
+    // 样式演示：只起画廊服务并打开窗口，不注册托盘、不改壁纸、不参与单实例锁。
+    // 便于验证小窗/大窗排版与浅色/深色跟随，不影响正在运行的实例。
+    if args.iter().any(|a| a == "--gallery-demo") {
+        let cfg = config::load_config();
+        let shared = Shared {
+            cfg: std::sync::Arc::new(std::sync::Mutex::new(cfg)),
+            busy: BusyState::default(),
+            previews: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            gallery_port: std::sync::Arc::new(std::sync::Mutex::new(0)),
+            update_tx: None,
+        };
+        if let Ok(port) = gallery::start(shared.clone()) {
+            *shared.gallery_port.lock().unwrap() = port;
+            eprintln!("[info] 画廊演示服务 127.0.0.1:{port}");
+            gallery::open(port, false);
+            std::thread::sleep(std::time::Duration::from_secs(600));
+        }
+        return Ok(());
+    }
+
     // 安装等待助手：系统安装器完成安装后清理缓存 deb 并自动拉起新版（见 spawn_waiter）。
     if let Some(pos) = args.iter().position(|a| a == "--wait-and-start") {
         if let Some(deb) = args.get(pos + 1) {
@@ -257,11 +277,11 @@ async fn main() -> zbus::Result<()> {
     let menu_path = ObjectPath::try_from("/Menu").unwrap();
     session
         .object_server()
-        .at(item_path.clone(), SniItem::new(shared.clone(), click_tx.clone()))
+        .at(item_path.clone(), SniItem::new(click_tx.clone()))
         .await?;
     session
         .object_server()
-        .at(menu_path, DbMenu::new(shared.clone(), click_tx))
+        .at(menu_path, DbMenu::new(click_tx))
         .await?;
 
     // 通知 watcher（deepin 的 dock 实现了它）
