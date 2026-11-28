@@ -10,6 +10,12 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
+
+/// 默认浏览器与屏幕几何缓存：这些查询要走 xdg-settings/xdg-mime/xdotool 外部进程，
+/// 每次点击画廊都重跑会拖慢弹出，缓存后只在首次计算一次。
+static BROWSER_CACHE: OnceLock<Option<String>> = OnceLock::new();
+static GEOMETRY_CACHE: OnceLock<(i32, i32, i32, i32)> = OnceLock::new();
 
 /// 画廊窗口正在启动。窗口出现前 find_gallery_windows 还查不到，
 /// 用这个标志挡住连续点击，避免拉起多个浏览器窗口。
@@ -57,6 +63,13 @@ pub fn start(shared: Shared) -> std::io::Result<u16> {
         }
     });
     Ok(port)
+}
+
+/// 带缓存的默认浏览器查询（首次走 xdg 外部命令，之后直接命中缓存）
+fn cached_browser_cmd() -> Option<String> {
+    BROWSER_CACHE
+        .get_or_init(default_browser_cmd)
+        .clone()
 }
 
 /// 从 XDG 默认浏览器 association 解析出实际可执行文件路径。
@@ -119,20 +132,22 @@ fn supports_app_mode(bin: &str) -> bool {
 const WIN_W: i32 = 620;
 const WIN_H: i32 = 520;
 
-/// 右下角目标几何，给底部 dock 留出空间
+/// 右下角目标几何，给底部 dock 留出空间（首次查询后缓存，避免每次点画廊都起 xdotool）
 fn gallery_geometry() -> (i32, i32, i32, i32) {
-    let out = std::process::Command::new("xdotool")
-        .arg("getdisplaygeometry")
-        .output()
-        .ok();
-    let (sw, sh) = out
-        .and_then(|o| {
-            let s = String::from_utf8_lossy(&o.stdout);
-            let mut it = s.split_whitespace();
-            Some((it.next()?.parse::<i32>().ok()?, it.next()?.parse::<i32>().ok()?))
-        })
-        .unwrap_or((1920, 1080));
-    ((sw - WIN_W - 16).max(0), (sh - WIN_H - 72).max(0), WIN_W, WIN_H)
+    *GEOMETRY_CACHE.get_or_init(|| {
+        let out = std::process::Command::new("xdotool")
+            .arg("getdisplaygeometry")
+            .output()
+            .ok();
+        let (sw, sh) = out
+            .and_then(|o| {
+                let s = String::from_utf8_lossy(&o.stdout);
+                let mut it = s.split_whitespace();
+                Some((it.next()?.parse::<i32>().ok()?, it.next()?.parse::<i32>().ok()?))
+            })
+            .unwrap_or((1920, 1080));
+        ((sw - WIN_W - 16).max(0), (sh - WIN_H - 72).max(0), WIN_W, WIN_H)
+    })
 }
 
 /// 专用浏览器配置目录：不继承默认配置里被记住的最大化状态，
@@ -170,7 +185,7 @@ pub fn open(port: u16, favorites: bool) {
 
     let path = if favorites { "/?view=fav" } else { "/" };
     let url = format!("http://127.0.0.1:{}{path}", port);
-    let launched = if let Some(browser) = default_browser_cmd().filter(|b| supports_app_mode(b)) {
+    let launched = if let Some(browser) = cached_browser_cmd().filter(|b| supports_app_mode(b)) {
         let (x, y, w, h) = gallery_geometry();
         let profile = browser_profile();
         let _ = std::fs::create_dir_all(&profile);
@@ -250,15 +265,15 @@ fn parse_window_id(s: &str) -> Option<u64> {
 }
 
 /// 画廊窗口获得焦点后，持续检测活动窗口；一旦焦点离开（点击窗口外）就关闭画廊。
-/// 600ms 失焦宽限：避开启动时焦点尚未落到新窗口、以及点托盘唤起时的瞬时抖动。
+/// 120ms 失焦宽限：足够滤掉焦点抖动又能让点击窗口外时快速收起。
 fn watch_gallery_focus(id: String) {
     use std::time::{Duration, Instant};
     let target = match parse_window_id(&id) {
         Some(v) => v,
         None => return,
     };
-    let tick = Duration::from_millis(200);
-    let grace = Duration::from_millis(600);
+    let tick = Duration::from_millis(60);
+    let grace = Duration::from_millis(120);
 
     // 等待窗口真正拿到焦点（最多约 8 秒），期间窗口消失则退出
     let mut focused = false;
