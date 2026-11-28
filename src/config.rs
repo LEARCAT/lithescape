@@ -136,7 +136,8 @@ pub struct FavSlideshow {
     pub enabled: bool,
     /// 间隔数量，配合 unit 使用
     pub interval: u64,
-    /// 单位：min / hour / day
+    /// 单位：sec / min / hour（day 仅为兼容旧配置保留）
+    /// login / wake 表示只在程序启动时切换一次，不按计时器轮询。
     pub unit: String,
     /// 上次切换的 Unix 秒（字符串，容错且便于直接查看）
     pub last_switch: String,
@@ -173,15 +174,27 @@ pub fn save_fav_slideshow(cfg: &FavSlideshow) {
     }
 }
 
-/// 把「数值 + 单位」换算成秒，限制在 1 分钟 ~ 365 天之间
+/// login/wake 由启动或对应事件触发，不参与 5 秒一次的计时轮询。
+pub fn fav_slideshow_timed(cfg: &FavSlideshow) -> bool {
+    cfg.unit != "login" && cfg.unit != "wake"
+}
+
+/// 把「数值 + 单位」换算成秒。
+/// sec 允许 30 秒；login/wake 不按计时器切换，返回极大值。
+/// 其余限制在 1 分钟 ~ 365 天之间。
 pub fn fav_slideshow_secs(cfg: &FavSlideshow) -> u64 {
+    if cfg.unit == "login" || cfg.unit == "wake" {
+        return u64::MAX;
+    }
     let n = cfg.interval.max(1);
     let unit = match cfg.unit.as_str() {
+        "sec" => 1,
         "hour" => 3600,
         "day" => 86400,
         _ => 60,
     };
-    n.saturating_mul(unit).clamp(60, 365 * 86400)
+    let min_secs = if cfg.unit == "sec" { 30 } else { 60 };
+    n.saturating_mul(unit).clamp(min_secs, 365 * 86400)
 }
 
 /// 切换收藏状态，返回切换后是否已收藏
@@ -325,12 +338,34 @@ mod tests {
         };
         assert_eq!(fav_slideshow_secs(&hour), 2 * 3600);
 
+        let sec = FavSlideshow {
+            interval: 30,
+            unit: "sec".into(),
+            ..Default::default()
+        };
+        assert_eq!(fav_slideshow_secs(&sec), 30);
+
         let day = FavSlideshow {
             interval: 1,
             unit: "day".into(),
             ..Default::default()
         };
         assert_eq!(fav_slideshow_secs(&day), 86400);
+
+        // 登录/唤醒：不按计时器轮询，只在程序启动时切换一次
+        let login = FavSlideshow {
+            unit: "login".into(),
+            ..Default::default()
+        };
+        assert_eq!(fav_slideshow_secs(&login), u64::MAX);
+        assert!(!fav_slideshow_timed(&login));
+        let wake = FavSlideshow {
+            unit: "wake".into(),
+            ..Default::default()
+        };
+        assert_eq!(fav_slideshow_secs(&wake), u64::MAX);
+        assert!(!fav_slideshow_timed(&wake));
+        assert!(fav_slideshow_timed(&FavSlideshow::default()));
 
         // 未知单位按分钟处理；0 与超大值被夹到合法范围
         let weird = FavSlideshow {
