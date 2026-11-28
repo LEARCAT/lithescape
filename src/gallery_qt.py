@@ -484,6 +484,10 @@ class Gallery(QWidget):
         self.items = []          # 全部壁纸，按最旧→今天
         self.view = "all"
         self.cur = 0
+        # 每个视图各自记住选中的「壁纸 id」（不是列表位置）。
+        # 全部壁纸与我的收藏是两个不同的列表，共用同一个 cur 位置会在切标签时
+        # 指到另一张壁纸，导致预览与桌面壁纸乱跳。
+        self.cur_id = {"all": None, "fav": None}
         self.pix_cache = {}      # index -> QPixmap（大图原图）
         self.thumb_cache = {}    # index -> QPixmap（缩略图原图）
         self.last_applied = -1
@@ -802,7 +806,8 @@ class Gallery(QWidget):
             self._loading = False
             QTimer.singleShot(3000, self._load_data)
             return
-        self.cur = len(self.items) - 1
+        # 各视图按壁纸 id 恢复自己的选中项，不再粗暴重置到列表末尾。
+        self._restore_cur()
         self.pix_cache.clear()
         self.thumb_cache.clear()
         self._loading = False
@@ -826,6 +831,28 @@ class Gallery(QWidget):
             return v[self.cur]
         return None
 
+    def _remember_cur(self):
+        """按壁纸 id 记住当前视图的选中项（列表位置在两个视图间不通用）。"""
+        v = self.visible()
+        if 0 <= self.cur < len(v):
+            self.cur_id[self.view] = v[self.cur].get("i")
+
+    def _restore_cur(self):
+        """切视图时按记住的壁纸 id 恢复选中项；该视图还没选过则落到最后一张（今天）。"""
+        v = self.visible()
+        if not v:
+            self.cur = 0
+            return
+        target = self.cur_id.get(self.view)
+        if target is not None:
+            idx = next((k for k, x in enumerate(v) if x.get("i") == target), -1)
+            if idx >= 0:
+                self.cur = idx
+                return
+        # 没有记录（首次进入该视图）或壁纸已不在该视图：默认最后一张。
+        self.cur = len(v) - 1
+        self.cur_id[self.view] = v[self.cur].get("i")
+
     # ---------- 渲染 ----------
     def _render(self):
         v = self.visible()
@@ -847,6 +874,8 @@ class Gallery(QWidget):
             return
         if self.cur >= len(v):
             self.cur = len(v) - 1
+        # 收藏增删等导致列表变化时，同步记住当前项，保证视图记忆不漂移。
+        self._remember_cur()
         it = v[self.cur]
         prefix = "收藏 · " if self.view == "fav" else ("今天 · " if it.get("i") == 0 else "%d 天前 · " % it.get("i", 0))
         self.title.setText(prefix + it.get("t", ""))
@@ -912,6 +941,7 @@ class Gallery(QWidget):
     def _on_thumb_click(self, k):
         if 0 <= k < len(self.visible()):
             self.cur = k
+            self._remember_cur()
             self._render()
 
     def _img_pix(self, idx, cache):
@@ -1018,6 +1048,7 @@ class Gallery(QWidget):
         nxt = self.cur + step
         if 0 <= nxt < len(v):
             self.cur = nxt
+            self._remember_cur()
             self._render()
 
     def switch_view(self, v):
@@ -1025,7 +1056,10 @@ class Gallery(QWidget):
             return
         # 数据里已包含全部/收藏两套视图，切标签只用内存数据重绘，
         # 不重新 HTTP 拉取、不清空缓存，避免「加载中」闪一下导致页面跳动。
+        # 先记住旧视图选中的壁纸，再按 id 恢复新视图上次选中的那张。
+        self._remember_cur()
         self.view = v
+        self._restore_cur()
         self._dirty = False
         self._render()
 
@@ -1046,6 +1080,8 @@ class Gallery(QWidget):
         for x in self.items:
             if x.get("i") == idx:
                 x["f"] = fav
+        # 收藏增删会改变收藏视图的成员，按 id 重新定位，避免位置对不上壁纸。
+        self._restore_cur()
         self._render()
         self.toast("已保存到收藏夹" if fav else "已取消收藏")
 
@@ -1186,15 +1222,19 @@ class Gallery(QWidget):
         self.move(x, y)
 
     def show_gallery(self, view):
+        # 先处理视图切换（按壁纸 id 记住旧视图、恢复新视图选中项），
+        # 让后续刷新与渲染都基于目标视图，避免先闪到旧壁纸再切回来。
+        view_changed = view != self.view
+        if view_changed:
+            self._remember_cur()
+            self.view = view
+            self._restore_cur()
         # 数据里已同时包含全部/收藏，切标签不需要重新 HTTP 拉取或清空图片缓存。
         # 只有数据过期（>60s）或尚未就绪才刷新，减少首次弹出的等待。
         stale = not self._data_ready or (time.monotonic() - self._data_ts > 60)
         if stale:
             self._load_data()
-        if view != self.view:
-            self.view = view
-            self._render()
-        elif self._dirty:
+        elif view_changed or self._dirty:
             self._render()
         else:
             # 内容没变：只把当前缩略图滚进视野，不再重建控件/重载图片。
