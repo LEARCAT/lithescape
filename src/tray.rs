@@ -26,9 +26,7 @@ const ID_QUIT: i32 = 9;
 const ID_PREVIEW: i32 = 10; // 壁纸预览
 const ID_FAVORITES: i32 = 11; // 壁纸收藏
 const SEP_1: i32 = 101;
-const SEP_2: i32 = 102;
 const SEP_3: i32 = 103;
-const SEP_4: i32 = 104;
 
 /// 一条预览记录
 #[derive(Clone)]
@@ -165,9 +163,7 @@ fn menu_layout() -> (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) {
         separator(SEP_1),
         menu_item(ID_PREVIEW, "壁纸预览", true, None),
         menu_item(ID_FAVORITES, "壁纸收藏", true, None),
-        separator(SEP_4),
         menu_item(ID_STORY, "图片故事", true, None),
-        separator(SEP_2),
         menu_item(ID_UPDATE, "软件更新", true, None),
         separator(SEP_3),
         menu_item(ID_QUIT, "退出", true, None),

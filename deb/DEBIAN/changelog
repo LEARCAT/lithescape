@@ -1,3 +1,11 @@
+lithescape (0.2.10) unstable; urgency=medium
+
+  * 右键菜单精简分隔线，只保留翻页组与退出前两处。
+  * 缩略图改为铺满卡片，消除选中时的左右白边。
+  * 重复点击托盘图标只唤起已有画廊窗口，不再打开多个。
+
+ -- LitheScape  Sat, 28 Nov 2026 17:06:00 +0800
+
 lithescape (0.2.9) unstable; urgency=medium
 
   * 壁纸画廊改为浅色/深色卡片并跟随系统主题，右下角小窗启动，放大后响应式排版。

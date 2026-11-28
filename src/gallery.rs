@@ -9,6 +9,11 @@ use crate::tray::{PreviewItem, Shared};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// 画廊窗口正在启动。窗口出现前 find_gallery_windows 还查不到，
+/// 用这个标志挡住连续点击，避免拉起多个浏览器窗口。
+static GALLERY_STARTING: AtomicBool = AtomicBool::new(false);
 
 /// 画廊大图缓存路径（按日期，避免重复下载）
 fn gallery_path(meta: &crate::config::MetaInfo) -> PathBuf {
@@ -143,9 +148,29 @@ pub fn open(port: u16, favorites: bool) {
     use std::process::Stdio;
     use std::time::Duration;
 
+    // 已有画廊窗口：只唤起一个，关掉可能残留的其它窗口，不再新开
+    let existing = find_gallery_windows();
+    if !existing.is_empty() {
+        let keep = &existing[0];
+        let _ = std::process::Command::new("wmctrl")
+            .args(["-i", "-a", keep])
+            .output();
+        for id in existing.iter().skip(1) {
+            let _ = std::process::Command::new("wmctrl")
+                .args(["-i", "-c", id])
+                .output();
+        }
+        return;
+    }
+    // 窗口还没建立但已在启动中：忽略本次点击，避免连开多个
+    if GALLERY_STARTING.load(Ordering::Acquire) {
+        return;
+    }
+    GALLERY_STARTING.store(true, Ordering::Release);
+
     let path = if favorites { "/?view=fav" } else { "/" };
     let url = format!("http://127.0.0.1:{}{path}", port);
-    if let Some(browser) = default_browser_cmd().filter(|b| supports_app_mode(b)) {
+    let launched = if let Some(browser) = default_browser_cmd().filter(|b| supports_app_mode(b)) {
         let (x, y, w, h) = gallery_geometry();
         let profile = browser_profile();
         let _ = std::fs::create_dir_all(&profile);
@@ -171,28 +196,37 @@ pub fn open(port: u16, favorites: bool) {
                 std::thread::sleep(Duration::from_millis(200));
                 if let Some(id) = find_gallery_window() {
                     place_window(&id, x, y, w, h);
-                    return;
+                    break;
                 }
             }
+            GALLERY_STARTING.store(false, Ordering::Release);
         });
+        true
     } else {
+        // 非 Chromium 浏览器走 xdg-open，无法追踪窗口，直接放行
         bing::open_url(&url);
+        false
+    };
+    if !launched {
+        GALLERY_STARTING.store(false, Ordering::Release);
     }
 }
 
-/// 从 `wmctrl -lG` 输出里找画廊窗口 id
-fn find_gallery_window() -> Option<String> {
-    let out = std::process::Command::new("wmctrl")
-        .arg("-lG")
-        .output()
-        .ok()?;
+/// 从 `wmctrl -lG` 输出里找所有画廊窗口 id（可能有历史残留的多个）
+fn find_gallery_windows() -> Vec<String> {
+    let out = match std::process::Command::new("wmctrl").arg("-lG").output() {
+        Ok(o) => o,
+        Err(_) => return Vec::new(),
+    };
     let text = String::from_utf8_lossy(&out.stdout);
-    for line in text.lines() {
-        if line.contains("LitheScape 壁纸画廊") {
-            return line.split_whitespace().next().map(|s| s.to_string());
-        }
-    }
-    None
+    text.lines()
+        .filter(|line| line.contains("LitheScape 壁纸画廊"))
+        .filter_map(|line| line.split_whitespace().next().map(|s| s.to_string()))
+        .collect()
+}
+
+fn find_gallery_window() -> Option<String> {
+    find_gallery_windows().into_iter().next()
 }
 
 /// 兜底校正窗口几何（正常启动时参数已生效，这里通常是空操作）
@@ -531,8 +565,8 @@ body{{font-family:"Noto Sans CJK SC","Microsoft YaHei",sans-serif;background:var
 #favbtn.fav-on:hover{{background:var(--accent-2)}}
 #thumbs{{display:flex;gap:7px;overflow-x:auto;padding-bottom:3px;justify-content:flex-start}}
 .thumb-wrap{{position:relative;flex-shrink:0;line-height:0}}
-/* contain：完整显示整张壁纸，不裁切；容器用背景色补边 */
-.thumb{{width:92px;height:52px;object-fit:contain;border-radius:5px;border:2px solid transparent;cursor:pointer;opacity:.55;display:block;background:var(--thumb);transition:opacity .15s,border-color .15s}}
+/* cover：容器与壁纸同为 16:9，铺满且不留白边、不裁切画面 */
+.thumb{{width:92px;height:52px;object-fit:cover;border-radius:5px;border:2px solid transparent;cursor:pointer;opacity:.55;display:block;background:var(--thumb);transition:opacity .15s,border-color .15s}}
 .thumb-wrap:hover .thumb{{opacity:.85}}
 .thumb.active{{opacity:1;border-color:var(--accent)}}
 /* 收藏图标：统一饱满心形，未收藏半透明白、已收藏白色实心（与描边同色） */
@@ -645,7 +679,7 @@ function placeNav() {{
 // 缩略图一行张数随窗口宽度自适应：以约 100px 的理想尺寸计算能放几张，
 // 小窗约 6 张，放大/全屏时自动增加张数铺满；尺寸保持在 52~140px 的舒适区间。
 // 张数不足时保持同样尺寸靠左排，间距仍为 10px，不硬拉开。
-// 缩略图本身用 object-fit:contain 显示完整画面。
+// 缩略图容器与壁纸同为 16:9，用 object-fit:cover 铺满，不留白边。
 function layoutThumbs() {{
   const box = $('thumbs');
   const wraps = box.children;
@@ -1056,8 +1090,8 @@ mod tests {
         assert!(html.contains("const heartSvg = () =>"));
         assert!(html.contains("fv.innerHTML = heartSvg()"));
         assert!(html.contains(".thumb-fav.on .heart,#photo-fav.on .heart{fill:#fff}"));
-        // 缩略图完整显示 + 间距自适应（多则铺满两侧，少则靠左小间距）
-        assert!(html.contains("object-fit:contain;border-radius:5px"));
+        // 缩略图铺满无白边 + 间距自适应（多则铺满两侧，少则靠左小间距）
+        assert!(html.contains("object-fit:cover;border-radius:5px"));
         assert!(html.contains("function layoutThumbs()"));
         assert!(html.contains("const ideal = 100;"));
         assert!(html.contains("Math.round((width + gap) / (ideal + gap))"));
