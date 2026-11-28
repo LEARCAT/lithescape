@@ -23,7 +23,6 @@ const ID_UPDATE: i32 = 8;
 const ID_QUIT: i32 = 9;
 const ID_PREVIEW: i32 = 10; // 壁纸画廊
 const ID_FAVORITES: i32 = 11; // 壁纸收藏
-const SEP_3: i32 = 103;
 
 /// 一条预览记录
 #[derive(Clone)]
@@ -132,17 +131,6 @@ fn menu_item(id: i32, label: &str, enabled: bool, toggle: Option<bool>) -> Owned
         .unwrap()
 }
 
-fn separator(id: i32) -> OwnedValue {
-    let mut props: HashMap<String, OwnedValue> = HashMap::new();
-    props.insert(
-        "type".into(),
-        Value::new("separator").try_to_owned().unwrap(),
-    );
-    Value::new((id, props, Vec::<OwnedValue>::new()))
-        .try_to_owned()
-        .unwrap()
-}
-
 fn menu_layout() -> (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) {
     // 不因 busy 把整组操作置灰：Qt 菜单在项被禁用时会忽略点击，
     // 用户感知就是「托盘点击没反应」。改为全部可用，由 handle_click
@@ -153,7 +141,6 @@ fn menu_layout() -> (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) {
         menu_item(ID_FAVORITES, "壁纸收藏", true, None),
         menu_item(ID_STORY, "图片故事", true, None),
         menu_item(ID_UPDATE, "软件更新", true, None),
-        separator(SEP_3),
         menu_item(ID_QUIT, "退出软件", true, None),
     ];
 
