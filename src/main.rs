@@ -299,6 +299,8 @@ async fn main() -> zbus::Result<()> {
     tray::spawn_startup_apply(shared.clone());
     tray::spawn_periodic(shared.clone());
     tray::spawn_favorite_rotation(shared.clone());
+    // 「登录时」：只在软件启动后切一次收藏壁纸。
+    tray::spawn_login_favorite_apply();
 
     // 启动时静默检查一次更新：只有发现新版本才弹系统通知，
     // 已是最新或网络不可达都不提示。放在独立线程，不阻塞托盘启动。
