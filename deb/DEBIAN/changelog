@@ -1,3 +1,9 @@
+lithescape (0.2.11) unstable; urgency=medium
+
+  * 画廊窗口获得焦点后，点击窗口外任意区域即自动关闭，带 600ms 失焦宽限避免误关。
+
+ -- LitheScape  Sat, 28 Nov 2026 17:20:00 +0800
+
 lithescape (0.2.10) unstable; urgency=medium
 
   * 右键菜单精简分隔线，只保留翻页组与退出前两处。

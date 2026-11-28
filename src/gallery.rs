@@ -196,6 +196,9 @@ pub fn open(port: u16, favorites: bool) {
                 std::thread::sleep(Duration::from_millis(200));
                 if let Some(id) = find_gallery_window() {
                     place_window(&id, x, y, w, h);
+                    // 失焦即关闭：点击画廊窗口外任意区域自动收起
+                    let watched = id.clone();
+                    std::thread::spawn(move || watch_gallery_focus(watched));
                     break;
                 }
             }
@@ -227,6 +230,77 @@ fn find_gallery_windows() -> Vec<String> {
 
 fn find_gallery_window() -> Option<String> {
     find_gallery_windows().into_iter().next()
+}
+
+/// 当前活动窗口的数值 ID（xdotool 给十进制，统一成 u64 与 wmctrl 的十六进制比较）
+fn active_window_id() -> Option<u64> {
+    let out = std::process::Command::new("xdotool")
+        .arg("getactivewindow")
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&out.stdout).trim().parse::<u64>().ok()
+}
+
+fn parse_window_id(s: &str) -> Option<u64> {
+    let hex = s.trim().trim_start_matches("0x");
+    u64::from_str_radix(hex, 16).ok()
+}
+
+/// 画廊窗口获得焦点后，持续检测活动窗口；一旦焦点离开（点击窗口外）就关闭画廊。
+/// 600ms 失焦宽限：避开启动时焦点尚未落到新窗口、以及点托盘唤起时的瞬时抖动。
+fn watch_gallery_focus(id: String) {
+    use std::time::{Duration, Instant};
+    let target = match parse_window_id(&id) {
+        Some(v) => v,
+        None => return,
+    };
+    let tick = Duration::from_millis(200);
+    let grace = Duration::from_millis(600);
+
+    // 等待窗口真正拿到焦点（最多约 8 秒），期间窗口消失则退出
+    let mut focused = false;
+    for _ in 0..40 {
+        if !find_gallery_windows()
+            .iter()
+            .any(|w| parse_window_id(w) == Some(target))
+        {
+            return;
+        }
+        if active_window_id() == Some(target) {
+            focused = true;
+            break;
+        }
+        std::thread::sleep(tick);
+    }
+    if !focused {
+        return;
+    }
+
+    // 已聚焦：失焦超过宽限时间即关闭，回到焦点则重置计时
+    let mut lost_since: Option<Instant> = None;
+    loop {
+        std::thread::sleep(tick);
+        if !find_gallery_windows()
+            .iter()
+            .any(|w| parse_window_id(w) == Some(target))
+        {
+            return; // 窗口已被用户或其它逻辑关闭
+        }
+        if active_window_id() == Some(target) {
+            lost_since = None;
+            continue;
+        }
+        let since = *lost_since.get_or_insert_with(Instant::now);
+        if since.elapsed() >= grace {
+            let _ = std::process::Command::new("wmctrl")
+                .args(["-i", "-c", &id])
+                .output();
+            return;
+        }
+    }
 }
 
 /// 兜底校正窗口几何（正常启动时参数已生效，这里通常是空操作）
@@ -1049,6 +1123,15 @@ mod tests {
     fn query_param_parses_simple_values() {
         assert_eq!(query_param("enabled=1&interval=45&unit=hour", "unit"), Some("hour".into()));
         assert_eq!(query_param("enabled=1&interval=45", "missing"), None);
+    }
+
+    #[test]
+    fn window_id_parses_wmctrl_hex() {
+        // wmctrl 给 0x 十六进制 ID；xdotool 给十进制，由 active_window_id 按 u64 解析。
+        // 两边统一成数值后即可比较（0x0b000003 == 184549379）。
+        assert_eq!(super::parse_window_id("0x0b000003"), Some(184549379));
+        assert_eq!("184549379".parse::<u64>().ok(), super::parse_window_id("0x0b000003"));
+        assert_eq!(super::parse_window_id("  "), None);
     }
 
     #[test]
