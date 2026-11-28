@@ -4,7 +4,7 @@
 //! deepin V25 的 dock 同时支持 SNI，图标会在托盘区显示。
 
 use crate::config::{
-    fav_slideshow_secs, is_favorite_mode, load_fav_slideshow, load_favorites,
+    fav_slideshow_secs, fav_slideshow_timed, is_favorite_mode, load_fav_slideshow, load_favorites,
     load_state, save_fav_slideshow, Config, MetaInfo, State,
 };
 use crate::{bing, VERSION};
@@ -490,6 +490,19 @@ pub fn spawn_startup_apply(shared: Shared) {
     });
 }
 
+/// 「登录时」模式：程序启动、收藏列表就绪后切一次收藏壁纸，之后不按计时器轮询。
+pub fn spawn_login_favorite_apply() {
+    std::thread::spawn(move || {
+        // 等预览加载器把历史归档建好，和启动切今日壁纸同节奏。
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let cfg = load_fav_slideshow();
+        if cfg.enabled && cfg.unit == "login" {
+            start_favorite_rotation();
+            eprintln!("[info] 登录时模式：启动已切换一次收藏壁纸");
+        }
+    });
+}
+
 /// 开启收藏自动更换时立即切到一张收藏壁纸。
 /// 必须先进入「收藏壁纸」状态，轮播线程才会接管；否则用户当前还是每日壁纸，
 /// 轮播线程按设计不动作，开启后要等到用户手动收藏一张才生效。
@@ -519,13 +532,19 @@ pub fn start_favorite_rotation() {
     save_fav_slideshow(&fav_cfg);
 }
 
-/// 收藏壁纸自动更换：按用户设定的「数值 + 分钟/小时/天」间隔轮换已收藏壁纸。
+/// 收藏壁纸自动更换：按用户设定的「秒/分钟/小时」间隔轮换已收藏壁纸；
+/// login/wake 只在程序启动时切换一次。
 /// 每 5 秒检查一次到期情况，避免开启后还要等一整个周期才生效。
 pub fn spawn_favorite_rotation(shared: Shared) {
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(5));
         let mut fav_cfg = load_fav_slideshow();
         if !fav_cfg.enabled {
+            continue;
+        }
+        // 登录时/唤醒时不是计时轮播：只在启动或对应事件触发时切一次。
+        // 绝不能用 u64::MAX 当间隔——转成 i64 会变成 -1，导致每 5 秒都判为到期。
+        if !fav_slideshow_timed(&fav_cfg) {
             continue;
         }
         // 只在「当前是收藏壁纸」时轮换；用户选用每日壁纸时保持当日壁纸，
@@ -540,7 +559,8 @@ pub fn spawn_favorite_rotation(shared: Shared) {
         let now = chrono::Local::now().timestamp();
         let last = fav_cfg.last_switch.parse::<i64>().unwrap_or(0);
         // 从未切换过（刚开启）立即执行；否则按到期时间判断
-        if last > 0 && now.saturating_sub(last) < fav_slideshow_secs(&fav_cfg) as i64 {
+        let interval_secs = fav_slideshow_secs(&fav_cfg).min(i64::MAX as u64) as i64;
+        if last > 0 && now.saturating_sub(last) < interval_secs {
             continue;
         }
         if !shared.begin_busy() {
