@@ -1,3 +1,12 @@
+lithescape (0.2.25) unstable; urgency=medium
+
+  * 修复「全部壁纸 / 我的收藏」切换时壁纸乱跳：每个视图按壁纸 id 各自记住选中项，
+    切回视图时恢复该视图上次选中的壁纸；托盘直接唤起也走同一逻辑。
+  * 更新安装说明与 README：当前版本 0.2.25，补全 python3 / python3-pyqt5 / xdotool
+    依赖说明，功能描述与 PyQt5 原生画廊、自动更换时间预设保持一致。
+
+ -- LitheScape <maintainer@lithescape.local>  Sun, 29 Nov 2026 01:16:00 +0800
+
 lithescape (0.2.24) unstable; urgency=medium
 
   * 壁纸画廊改用 PyQt5 原生窗口，脱离浏览器：不再带出浏览器任务栏图标，关闭浏览器不影响画廊。
