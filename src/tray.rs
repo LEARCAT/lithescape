@@ -18,14 +18,11 @@ use tokio::sync::mpsc::UnboundedSender;
 
 // 菜单项 ID
 const ID_NOW: i32 = 1;
-const ID_PREV: i32 = 2;
-const ID_NEXT: i32 = 3;
 const ID_STORY: i32 = 4;
 const ID_UPDATE: i32 = 8;
 const ID_QUIT: i32 = 9;
-const ID_PREVIEW: i32 = 10; // 壁纸预览
+const ID_PREVIEW: i32 = 10; // 壁纸画廊
 const ID_FAVORITES: i32 = 11; // 壁纸收藏
-const SEP_1: i32 = 101;
 const SEP_3: i32 = 103;
 
 /// 一条预览记录
@@ -147,26 +144,17 @@ fn separator(id: i32) -> OwnedValue {
 }
 
 fn menu_layout() -> (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) {
-    let state: State = load_state();
-    let idx = state.current_index;
-    // 翻页边界由本地归档实际天数决定（Bing 只给 8 天，归档会随时间增长）
-    let total = crate::config::load_history().len() as i32;
-    let max_idx = (total - 1).max(0);
-
     // 不因 busy 把整组操作置灰：Qt 菜单在项被禁用时会忽略点击，
     // 用户感知就是「托盘点击没反应」。改为全部可用，由 handle_click
     // 内部提示「正在处理」，busy 也有 90 秒超时兜底。
     let children = vec![
         menu_item(ID_NOW, "每日壁纸", true, None),
-        menu_item(ID_PREV, "上一张", idx < max_idx, None),
-        menu_item(ID_NEXT, "下一张", idx > 0, None),
-        separator(SEP_1),
-        menu_item(ID_PREVIEW, "壁纸预览", true, None),
+        menu_item(ID_PREVIEW, "壁纸画廊", true, None),
         menu_item(ID_FAVORITES, "壁纸收藏", true, None),
         menu_item(ID_STORY, "图片故事", true, None),
         menu_item(ID_UPDATE, "软件更新", true, None),
         separator(SEP_3),
-        menu_item(ID_QUIT, "退出", true, None),
+        menu_item(ID_QUIT, "退出软件", true, None),
     ];
 
     let mut props: HashMap<String, OwnedValue> = HashMap::new();
@@ -261,7 +249,7 @@ impl SniItem {
         )
     }
 
-    /// 左键点击托盘 —— 打开壁纸预览（投递给主循环异步处理，不阻塞 SNI 连接）
+    /// 左键点击托盘 —— 打开壁纸画廊（投递给主循环异步处理，不阻塞 SNI 连接）
     fn activate(&self, _x: i32, _y: i32) {
         if let Some(tx) = self.click_tx.lock().unwrap().as_ref() {
             let _ = tx.send(ID_PREVIEW);
@@ -319,35 +307,9 @@ pub fn dispatch_click(shared: &Shared, id: i32) {
                 }
             });
         }
-        ID_PREV if idx < crate::config::load_history().len() as i32 - 1 => {
-            if !shared.begin_busy() {
-                bing::notify("请稍候", "正在切换壁纸，完成后再试");
-                return;
-            }
-            std::thread::spawn(move || {
-                let _guard = sh.busy_guard();
-                match bing::apply(idx + 1, false, &cfg) {
-                    Ok(msg) => bing::notify("已切换到上一张", &msg),
-                    Err(e) => bing::notify("切换失败", &e),
-                }
-            });
-        }
-        ID_NEXT if idx > 0 => {
-            if !shared.begin_busy() {
-                bing::notify("请稍候", "正在切换壁纸，完成后再试");
-                return;
-            }
-            std::thread::spawn(move || {
-                let _guard = sh.busy_guard();
-                match bing::apply(idx - 1, false, &cfg) {
-                    Ok(msg) => bing::notify("已切换到下一张", &msg),
-                    Err(e) => bing::notify("切换失败", &e),
-                }
-            });
-        }
         ID_PREVIEW | ID_FAVORITES => {
             let favorites = id == ID_FAVORITES;
-            let label = if favorites { "壁纸收藏" } else { "壁纸预览" };
+            let label = if favorites { "壁纸收藏" } else { "壁纸画廊" };
             let port = shared.gallery_port.lock().map(|p| *p).unwrap_or(0);
             if port == 0 {
                 bing::notify(label, "画廊服务未启动，请重启程序");
