@@ -1,6 +1,6 @@
 [package]
 name = "lithescape"
-version = "0.2.24"
+version = "0.2.25"
 edition = "2021"
 description = "LitheScape daily wallpaper tray app for deepin V25"
 
