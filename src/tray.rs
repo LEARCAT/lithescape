@@ -4,8 +4,8 @@
 //! deepin V25 的 dock 同时支持 SNI，图标会在托盘区显示。
 
 use crate::config::{
-    autostart_enabled, fav_slideshow_secs, is_favorite_mode, load_fav_slideshow, load_favorites,
-    load_state, save_fav_slideshow, set_autostart, Config, MetaInfo, State,
+    fav_slideshow_secs, is_favorite_mode, load_fav_slideshow, load_favorites,
+    load_state, save_fav_slideshow, Config, MetaInfo, State,
 };
 use crate::{bing, VERSION};
 use std::collections::HashMap;
@@ -21,7 +21,6 @@ const ID_NOW: i32 = 1;
 const ID_PREV: i32 = 2;
 const ID_NEXT: i32 = 3;
 const ID_STORY: i32 = 4;
-const ID_AUTO: i32 = 7;
 const ID_UPDATE: i32 = 8;
 const ID_QUIT: i32 = 9;
 const ID_PREVIEW: i32 = 10; // 壁纸预览
@@ -152,7 +151,6 @@ fn separator(id: i32) -> OwnedValue {
 fn menu_layout() -> (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) {
     let state: State = load_state();
     let idx = state.current_index;
-    let autostart = autostart_enabled();
     // 翻页边界由本地归档实际天数决定（Bing 只给 8 天，归档会随时间增长）
     let total = crate::config::load_history().len() as i32;
     let max_idx = (total - 1).max(0);
@@ -170,7 +168,6 @@ fn menu_layout() -> (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) {
         separator(SEP_4),
         menu_item(ID_STORY, "图片故事", true, None),
         separator(SEP_2),
-        menu_item(ID_AUTO, "开机自启", true, Some(autostart)),
         menu_item(ID_UPDATE, "软件更新", true, None),
         separator(SEP_3),
         menu_item(ID_QUIT, "退出", true, None),
@@ -382,14 +379,6 @@ pub fn dispatch_click(shared: &Shared, id: i32) {
         ID_STORY => {
             if let Some(meta) = state.meta.get(&idx.to_string()) {
                 bing::open_url(&meta.copyrightlink);
-            }
-        }
-        ID_AUTO => {
-            let current = autostart_enabled();
-            if !set_autostart(!current) {
-                bing::notify("设置失败", "无法修改开机自启");
-            } else {
-                bing::notify("开机自启", if current { "已关闭" } else { "已开启" });
             }
         }
         ID_UPDATE => {

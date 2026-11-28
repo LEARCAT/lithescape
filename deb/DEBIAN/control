@@ -1,5 +1,5 @@
 Package: lithescape
-Version: 0.2.7
+Version: 0.2.8
 Section: utils
 Priority: optional
 Architecture: amd64
@@ -7,4 +7,4 @@ Depends: libc6 (>= 2.34)
 Maintainer: LitheScape
 Description: 轻格壁纸 - deepin 下的必应每日壁纸托盘程序
  自动获取并设置必应每日壁纸，托盘一键更换，支持本地归档的壁纸历史预览、
- 大图画廊、按屏幕分辨率选图、开机自启与软件更新检查。
+ 大图画廊、按屏幕分辨率选图与软件更新检查。

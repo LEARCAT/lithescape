@@ -1,3 +1,10 @@
+lithescape (0.2.8) unstable; urgency=medium
+
+  * 删除托盘「开机自启」菜单项及相关功能，开机自启改由系统启动器右键设置，
+    避免与系统设置状态不一致。
+
+ -- LitheScape  Sat, 28 Nov 2026 14:26:00 +0800
+
 lithescape (0.2.7) unstable; urgency=medium
 
   * 去掉托盘菜单中的「收藏自动更换」项；该功能仍可在「壁纸收藏」页面的

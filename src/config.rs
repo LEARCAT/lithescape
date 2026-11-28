@@ -91,10 +91,6 @@ pub fn history_path() -> PathBuf {
     home_dir().join(".local/state/lithescape/history.json")
 }
 
-pub fn autostart_path() -> PathBuf {
-    home_dir().join(".config/autostart/lithescape.desktop")
-}
-
 /// 收藏文件路径：与历史归档分开，不受 365 天裁剪影响，长期保留。
 pub fn favorites_path() -> PathBuf {
     home_dir().join(".local/state/lithescape/favorites.json")
@@ -284,28 +280,6 @@ pub fn merge_history(fresh: Vec<HistoryItem>) -> bool {
     let changed = all.len() != before || all.iter().any(|h| h.meta.enddate.is_empty());
     save_history(&all);
     changed
-}
-
-pub fn autostart_enabled() -> bool {
-    autostart_path().exists()
-}
-
-pub fn set_autostart(enabled: bool) -> bool {
-    let path = autostart_path();
-    if enabled {
-        let content = "[Desktop Entry]\nType=Application\nName=LitheScape | 轻格壁纸\n\
-Comment=Bing daily wallpaper tray app for deepin\nExec=/usr/bin/lithescape\n\
-Hidden=false\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n";
-        if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        if fs::write(&path, content).is_err() {
-            return false;
-        }
-    } else if path.exists() && fs::remove_file(&path).is_err() {
-        return false;
-    }
-    autostart_enabled() == enabled
 }
 
 #[cfg(test)]
