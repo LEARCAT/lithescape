@@ -1,9 +1,9 @@
 Package: lithescape
-Version: 0.2.12
+Version: 0.2.24
 Section: utils
 Priority: optional
 Architecture: amd64
-Depends: libc6 (>= 2.34)
+Depends: libc6 (>= 2.34), python3, python3-pyqt5, xdotool
 Maintainer: LitheScape
 Description: 轻格壁纸 - deepin 下的必应每日壁纸托盘程序
  自动获取并设置必应每日壁纸，托盘一键更换，支持本地归档的壁纸历史预览、
