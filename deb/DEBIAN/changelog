@@ -1,3 +1,9 @@
+lithescape (0.2.12) unstable; urgency=medium
+
+  * 右键菜单去掉分隔线；画廊失焦关闭提速至约 236ms；缓存默认浏览器与屏幕几何查询，提升弹出速度。
+
+ -- LitheScape  Sat, 28 Nov 2026 17:45:00 +0800
+
 lithescape (0.2.11) unstable; urgency=medium
 
   * 画廊窗口获得焦点后，点击窗口外任意区域即自动关闭，带 600ms 失焦宽限避免误关。
